@@ -1,0 +1,2647 @@
+---
+title: "Manuscript Specific Figs"
+author: "Dionne Argyropoulos"
+format: html
+---
+
+# Load Packages and Data
+
+```{r}
+# Source R packages 
+source(here::here("code/packages.R"))
+
+# Load primary dataset
+d <- read.csv(here::here("data/d_samples_global_training.csv")) %>%
+  dplyr::select(-SampleID)
+
+# Set ggplot2 plots to bw theme (personal preference)
+theme_set(theme_bw())
+
+# Load Custom Functions
+r_files <- list.files(
+  here::here("code/R"),
+  pattern = "\\.R$",
+  full.names = TRUE,
+  ignore.case = TRUE
+)
+invisible(lapply(r_files, function(f) source(f)))
+```
+
+# Define combo names
+
+```{r}
+# top 10
+top_10_combo <- c(
+  "s16",
+  "LF005",
+  "LF001",
+  "LF010",
+  "LF016",
+  "RBP2b.P87",
+  "MSP8",
+  "PTEX150",
+  "PvCSS",
+  "EBP"
+)
+top_10_combo_label <- c(
+  "Pvs16",
+  "Pv-fam-a",
+  "PvRAMA",
+  "PvMSP5",
+  "PvMSP1-19",
+  "PvRBP2b",
+  "PvMSP8",
+  "PvPTEX150",
+  "PvCSS",
+  "PvEBPII"
+)
+
+# top 8
+top_8_combo <- c(
+  "EBP",
+  "PTEX150",
+  "PvCSS",
+  "LF005",
+  "LF010",
+  "RBP2b.P87",
+  "LF016",
+  "MSP8"
+)
+# Derive labels for top_8_combo from the top_10 mapping
+top_8_combo_label <- c(
+  "Pv-fam-a",
+  "PvMSP5",
+  "PvMSP1-19",
+  "PvRBP2b",
+  "PvMSP8",
+  "PvPTEX150",
+  "PvCSS",
+  "PvEBPII"
+)
+```
+
+# Manuscript v1 
+
+# MAIN TEXT: Figures
+
+## Fig 1: IgG Antibody Responses in RAU
+
+Figure 1. IgG antibody responses in relative antibody units (RAU) for each antigen consider in our panel from the year-long cohort studies in malaria endemic regions of Thailand (Th), the Solomon Islands (SI), and Brazil (Br), as well as negative controls from Australian Red Cross (ARC), Brazil  (Br neg), Thai Red Cross (TRC), and the volunteer blood donor registry (VBDR).
+
+```{r}
+# Read in the data from March and exclude the 163 rerun samples from October
+d_all <- read.csv(here::here(
+  "data/longitudinal_cohorts/October_rerun_with_inf.csv"
+)) %>% # This data is the March data plus the 163 replaced, but also including infection status and cohort
+  # MAGPIX_run_March_2024.csv would also work the same, apart from you would need to change SampleID to sampleid.
+  dplyr::filter(
+    !SampleID %in%
+      as.list(
+        read.csv(here::here(
+          "data/longitudinal_cohorts/d_OCT_rerun_samples.csv"
+        ))$SampleID
+      )
+  ) %>% # Remove 163 rerun samples
+  dplyr::select(all_of(top_10_combo), SampleID, status, inf_stat, Cohort) %>%
+  dplyr::mutate(
+    cohort_short = case_when(
+      Cohort == "ARC" ~ "ARC",
+      Cohort == "Brazil" ~ "Br",
+      Cohort == "Rio Negatives" ~ "Br neg",
+      Cohort == "Solomon Islands" ~ "SI",
+      Cohort == "Thai Red Cross" ~ "ThRC",
+      Cohort == "Thailand" ~ "Th",
+      Cohort == "VBDR" ~ "VBDR"
+    )
+  )
+# Plot the IgG boxplots
+rau_plot <- d_all %>%
+  pivot_longer(
+    !c(SampleID, status, inf_stat, Cohort, cohort_short),
+    names_to = "Antigen",
+    values_to = "RAU"
+  ) %>%
+  mutate(
+    inf_stat = case_when(
+      inf_stat == "negative" & cohort_short == "ARC" ~ "ARC",
+      inf_stat == "negative" & cohort_short == "VBDR" ~ "VBDR",
+      inf_stat == "negative" & cohort_short == "Br neg" ~ "Br neg",
+      inf_stat == "negative" & cohort_short == "ThRC" ~ "ThRC",
+      .default = as.character(inf_stat)
+    ),
+    cohort_short = case_when(
+      cohort_short == "ARC" ~ "-ves",
+      cohort_short == "VBDR" ~ "-ves",
+      cohort_short == "Br neg" ~ "-ves",
+      cohort_short == "ThRC" ~ "-ves",
+      .default = as.character(cohort_short)
+    ),
+    cohort_short = factor(cohort_short, levels = c("Br", "SI", "Th", "-ves")),
+    inf_stat = factor(
+      inf_stat,
+      levels = c(
+        "current",
+        "recent",
+        "old",
+        "never",
+        "Br neg",
+        "ThRC",
+        "ARC",
+        "VBDR"
+      ),
+      labels = c(
+        "Current",
+        "Recent",
+        "Old",
+        "Never",
+        "Br neg",
+        "ThRC",
+        "ARC",
+        "VBDR"
+      ),
+      ordered = T
+    ),
+    Antigen = factor(
+      Antigen,
+      levels = top_10_combo,
+      labels = top_10_combo_label,
+      ordered = T
+    )
+  ) %>%
+  ggplot(aes(x = cohort_short, y = RAU, color = inf_stat)) +
+  geom_boxplot(aes(fill = inf_stat), color = "black") +
+  facet_wrap(~Antigen, nrow = 2) +
+  scale_y_log10(
+    breaks = c(1e-5, 1e-4, 1e-3, 1e-2, 0.03),
+    labels = c("0.00001", "0.0001", "0.001", "0.01", "0.03")
+  ) +
+  scale_fill_manual(
+    values = c(
+      "Current" = "#481567FF",
+      "Recent" = "#33638DFF",
+      "Old" = "#20A387FF",
+      "Never" = "#95D840FF",
+      "Br neg" = "#F6E826",
+      "ThRC" = "#FBDC2A",
+      "ARC" = "#FCD225",
+      "VBDR" = "#FCCE0D"
+    ),
+    breaks = c(
+      "Current",
+      "Br neg",
+      "Recent",
+      "ThRC",
+      "Old",
+      "ARC",
+      "Never",
+      "VBDR"
+    )
+  ) +
+  theme_bw() +
+  theme(
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 11),
+    # axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 11),
+    strip.text = element_text(size = 11),
+    legend.position = "bottom"
+  ) +
+  labs(x = "Cohort", y = "Log-transformed RAU", fill = "Infection status")
+# ggsave(filename = here::here("results/manuscript_v1/Figure1_alt.png"), width = 30-2.5, height = 21-2.5, units = "cm")
+
+d_all %>%
+  filter(inf_stat != "negative") %>%
+  group_by(inf_stat) %>%
+  count()
+```
+### Correlation between antigen RAUs 
+
+The `Hmisc` package was used to calculate and visualise the correlation between IgG responses. The `rcorr` R package can be used to compute significance levels for pearson and spearman as well as corr coefficients. The `GGally` R package enables visualisation of the correlation matrix. The `ggcorrplot` is another option. 
+
+```{r}
+library(Hmisc)
+df <- d %>%
+  dplyr::select(all_of(top_10_combo), status)
+
+num_df <- d %>%
+  dplyr::select(all_of(top_10_combo))
+
+cor_mat <- cor(num_df, use = "pairwise.complete.obs", method = "pearson")
+rc <- rcorr(as.matrix(num_df))
+
+# Transform correlation matrix
+corr_long <- cor_mat %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "antigen1") %>%
+  pivot_longer(
+    cols = -antigen1,
+    names_to = "antigen2",
+    values_to = "corr"
+  ) %>%
+  drop_na() %>%
+  mutate(
+    antigen1 = factor(
+      antigen1,
+      levels = top_10_combo,
+      labels = top_10_combo_label
+    ),
+    antigen2 = factor(
+      antigen2,
+      levels = top_10_combo,
+      labels = top_10_combo_label
+    )
+  ) %>%
+  # Keep only lower triangle (including diagonal)
+  filter(as.numeric(antigen1) >= as.numeric(antigen2))
+
+# Reverse y-axis so first antigen is on top
+corr_long$antigen2 <- factor(
+  corr_long$antigen2,
+  levels = rev(levels(corr_long$antigen2))
+)
+
+corr_plot <- corr_long %>%
+  ggplot() +
+  geom_tile(
+    aes(antigen1, antigen2, fill = corr)
+  ) +
+  geom_text(
+    aes(antigen1, antigen2, label = round(corr, 2)),
+    size = 5
+  ) +
+  scale_fill_gradient(
+    low = "white",
+    high = "#3B4CC0",
+    limits = c(0, 1),
+    name = "Correlation"
+  ) +
+  scale_y_discrete(limits = rev) + # reverse for top-to-bottom
+  scale_x_discrete(limits = rev) + # reverse for top-to-bottom
+  theme_bw() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text = element_text(size = 11),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.title = element_text(size = 11),
+    legend.text = element_text(size = 11)
+  )
+# ggsave(here("results/correlation_final.png"), height = 15, width = 22, units = "cm") # great figure
+```
+
+### Final figure 1
+
+```{r}
+library(cowplot)
+library(magick)
+image_plot <-
+  ggdraw() +
+  draw_image(here("results/manuscript_v2/Fig1A.png"))
+ggarrange(
+  ggarrange(
+    image_plot,
+    corr_plot,
+    ncol = 2,
+    nrow = 1,
+    labels = c("A", "B"),
+    widths = c(0.6, 1)
+  ),
+  rau_plot,
+  ncol = 1,
+  nrow = 2,
+  labels = c("", "C"),
+  heights = c(1, 1.25)
+)
+# ggsave(
+#   filename = here::here("results/manuscript_v1/Fig1.png"),
+#   width = 35,
+#   height = 30,
+#   units = "cm"
+# )
+ggsave(
+  filename = here::here("results/manuscript_v2/Fig1.png"),
+  width = 35,
+  height = 30,
+  units = "cm"
+)
+```
+
+### Checking Correlation with OLD data
+
+```{r}
+old_d <- read.csv(here("data/pvserotat_v1/MAGPIX_Pv_sero.csv"))
+old_d_subset <- old_d %>% dplyr::select(RBP2b.F2.E:RBP2p1.BS)
+cor_mat_old <- cor(
+  old_d_subset,
+  use = "pairwise.complete.obs",
+  method = "pearson"
+)
+# Transform correlation matrix
+corr_long_old <-
+  cor_mat_old %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "antigen1") %>%
+  pivot_longer(
+    cols = -antigen1,
+    names_to = "antigen2",
+    values_to = "corr"
+  ) %>%
+  drop_na() %>%
+  # Keep only lower triangle (including diagonal)
+  filter(antigen1 >= antigen2)
+
+# Reverse y-axis so first antigen is on top
+# corr_long_old$antigen2 <- factor(corr_long_old$antigen2, levels = rev(levels(corr_long_old$antigen2)))
+corr_long_old %>%
+  ggplot() +
+  geom_tile(
+    aes(antigen1, antigen2, fill = corr)
+  ) +
+  geom_text(
+    aes(antigen1, antigen2, label = round(corr, 2)),
+    size = 3.5
+  ) +
+  scale_fill_gradient(
+    low = "white",
+    high = "#3B4CC0",
+    limits = c(0, 1),
+    name = "Correlation"
+  ) +
+  scale_x_discrete(limits = rev) + # reverse for top-to-bottom
+  theme_bw() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank()
+  ) +
+  coord_flip()
+corr_long_old %>%
+  filter(corr < 0.9999) %>%
+  filter(corr > 0.5)
+```
+
+### Data Analysis
+
+#### Q1: How many individuals had an infection at the time plasma was collected? (i.e., final visit)
+
+```{r}
+d_all %>%
+  group_by(inf_stat, Cohort) %>%
+  count()
+d_all %>%
+  filter(Cohort %in% c("Brazil", "Solomon Islands", "Thailand")) %>%
+  group_by(inf_stat) %>%
+  count()
+```
+
+#### Q2: Did the antibody responses vary by country?
+
+```{r}
+d_all_long <- d_all %>%
+  dplyr::select(-c(SampleID, status, cohort_short)) %>%
+  pivot_longer(
+    -c(inf_stat, Cohort),
+    names_to = "Antigen",
+    values_to = "RAU"
+  ) %>%
+  filter(inf_stat != "negative")
+
+results <- d_all_long %>%
+  group_by(Antigen, inf_stat) %>%
+  pairwise_wilcox_test(
+    RAU ~ Cohort,
+    p.adjust.method = "BH" # multiple comparison correction
+  ) %>%
+  ungroup()
+
+plot_data <- results %>%
+  mutate(
+    comparison = paste(group1, "vs", group2),
+    neglogp = -log10(p)
+  )
+
+plot_data %>%
+  mutate(
+    comparison = factor(
+      comparison,
+      levels = c(
+        "Brazil vs Solomon Islands",
+        "Brazil vs Thailand",
+        "Solomon Islands vs Thailand"
+      ),
+      labels = c("Br vs SI", "Br vs Th", "SI vs Th")
+    ),
+    Antigen = factor(
+      Antigen,
+      levels = top_10_combo,
+      labels = top_10_combo_label,
+      ordered = T
+    )
+  ) %>%
+  ggplot(aes(x = comparison, y = Antigen, fill = p.adj.signif)) +
+  geom_tile(color = "white") +
+  scale_fill_manual(
+    values = c(
+      `*` = "#FEE5D9",
+      `**` = "#FCAE91",
+      `***` = "#FB6A4A",
+      `****` = "#CB181D",
+      `ns` = "grey"
+    )
+  ) +
+  facet_wrap(
+    ~inf_stat,
+    # , ncol = 1, nrow = 4
+    ncol = 4,
+    nrow = 1
+  ) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom"
+    # panel.spacing = unit(1, "lines")
+  ) +
+  labs(
+    x = "Cohort comparison",
+    y = "Antigen",
+    title = "Pairwise cohort differences by infection status",
+    fill = "Adjusted P-value"
+  )
+# ggsave(here::here("results/manuscript_v1/SFig_cohort_diff_by_status.png"), width = 25, height = 15, units = "cm")
+```
+
+#### Q3: For individuals classified as seropositive or seronegative, what were their infection statuses (never, old, recent, or current)? AUC/sens/spec? 
+
+```{r}
+# Load random forest votes
+rand_forest_thresholds <- read.csv(here::here(
+  "results/rand_forest/rand_forest_results.csv"
+))
+# Load thresholds
+thresholds <- read.csv(here::here(
+  "results/rand_forest/rand_forest_threshold_values.csv"
+))
+# Select max threshold
+threshold_max_sens_spec <- thresholds %>%
+  filter(sens_spec == "max_sens_spec") %>%
+  pull(threshold)
+# Add new column applying threshold classification
+rand_forest_thresholds <- rand_forest_thresholds %>%
+  mutate(
+    seroclass_max = ifelse(
+      .pred_new > threshold_max_sens_spec,
+      "seropositive",
+      "seronegative"
+    )
+  )
+# Re-bind to d to get cohort identity
+d_8_antigens <- d_all %>%
+  dplyr::select(all_of(top_8_combo), status, inf_stat, Cohort, cohort_short) %>%
+  rownames_to_column(var = "rowname")
+rand_forest_thresholds <- rand_forest_thresholds %>%
+  rownames_to_column(var = "rowname") %>%
+  left_join(d_8_antigens, by = c("rowname", top_8_combo, "status"))
+# Count classification
+safe_div <- function(num, den) {
+  ifelse(den == 0, NA, num / den)
+}
+rand_forest_thresholds %>%
+  mutate(
+    TP = status == "new" & seroclass_max == "seropositive",
+    FN = status == "new" & seroclass_max == "seronegative",
+    TN = status == "old" & seroclass_max == "seronegative",
+    FP = status == "old" & seroclass_max == "seropositive"
+  ) %>%
+  group_by(inf_stat) %>%
+  summarise(
+    TP = sum(TP),
+    FN = sum(FN),
+    TN = sum(TN),
+    FP = sum(FP),
+    sensitivity = safe_div(TP, TP + FN),
+    specificity = safe_div(TN, TN + FP),
+    .groups = "drop"
+  )
+```
+
+## Fig 2: Single- and Multi-antigen ROC Curves 
+
+```{r}
+single_antigen_roc_data <- read.csv(here(
+  "results/roc_curves/single_antigen_roc_data.csv"
+))
+
+# Panel A: Single Antigen Classifier
+p1 <- single_antigen_roc_data %>%
+  dplyr::mutate(
+    antigen_name = factor(
+      antigen_name,
+      levels = top_10_combo,
+      labels = top_10_combo_label,
+      ordered = T
+    )
+  ) %>%
+  ggplot2::ggplot(aes(
+    x = 1 - specificity,
+    y = sensitivity,
+    color = antigen_name,
+    group = antigen_name
+  )) +
+  ggplot2::geom_line() +
+  ggplot2::geom_abline(linetype = "dashed") +
+  ggplot2::labs(x = "1 - Specificity", y = "Sensitivity", colour = "Antigen") +
+  ggplot2::scale_y_continuous(breaks = seq(0, 1, 0.2)) +
+  ggplot2::scale_x_continuous(breaks = seq(0, 1, 0.2)) +
+  ggplot2::scale_colour_manual(
+    values = melb_trams(
+      10,
+      c(
+        "the5",
+        "the6",
+        "the1",
+        "the16",
+        "the109",
+        "the58",
+        "the59",
+        "the67",
+        "the75",
+        "the78"
+      )
+    )
+  ) +
+  ggplot2::theme_bw() +
+  guides(
+    colour = guide_legend(
+      override.aes = list(size = 3, linewidth = 1.5),
+      order = 1
+    )
+  ) +
+  theme(
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 11),
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 11)
+  )
+
+# Panel B: Diminishing Returns Top 2 to 8 Antigen Classifier
+top_combo_auc <- read.csv(here(
+  "results/rand_forest/top_combinations/final_top_combinations.csv"
+))
+p2 <- top_combo_auc %>%
+  ggplot(aes(x = top, y = mean_auc)) +
+  geom_point() +
+  geom_line() +
+  geom_errorbar(
+    aes(ymin = mean_auc - SE, ymax = mean_auc + SE),
+    width = 0.2,
+    color = "black"
+  ) +
+  ylim(0.8, 0.9) +
+  labs(x = "Number of antigens", y = "AUC") +
+  scale_x_continuous(
+    breaks = seq(min(top_combo_auc$top), max(top_combo_auc$top), by = 1)
+  ) +
+  theme(
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 11)
+  )
+theme_bw()
+
+# Panel C: ROC Curves Top 2 to 8 Antigen Classifier
+roc_results <- read.csv(
+  here::here(
+    "results/rand_forest/top_combinations/all_top_combinations_roc.csv"
+  )
+) %>%
+  dplyr::as_tibble() %>%
+  dplyr::group_by(model_set) # <- ensures one ROC line per model
+top_combo_auc_lab <- top_combo_auc %>% mutate(model_set = paste0("Top ", top))
+threshold <- read.csv(
+  here::here(
+    "model/rand_forest/random_forest_sens_spec_performance_metrics.csv"
+  )
+) %>%
+  dplyr::rename(sens_spec = group) %>%
+  filter(sens_spec == "max_sens_spec") %>%
+  pivot_wider(
+    id_cols = c(.estimator, sens_spec),
+    names_from = ".metric",
+    values_from = ".estimate"
+  ) %>%
+  mutate(
+    model_set = "Top 8 (AUC = 0.876 [SE: 0.004])",
+    label = c("81.0% sensitivity\n81.0% specificity")
+  )
+p3 <- roc_results %>%
+  mutate(
+    model_set = factor(
+      model_set,
+      levels = c("top_2", "top_3", "top_4", "top_5", "top_6", "top_7", "top_8"),
+      labels = c("Top 2", "Top 3", "Top 4", "Top 5", "Top 6", "Top 7", "Top 8")
+    )
+  ) %>%
+  left_join(top_combo_auc_lab, by = "model_set") %>%
+  mutate(
+    model_set = paste0(
+      model_set,
+      " (AUC = ",
+      round(mean_auc, 3),
+      " [SE: ",
+      round(SE, 3),
+      "])"
+    )
+  ) %>%
+  ggplot(aes(1 - specificity, sensitivity, color = model_set)) +
+  geom_line(linewidth = 0.4) +
+  geom_abline(linetype = "dashed") +
+  labs(
+    x = "1 - Specificity",
+    y = "Sensitivity",
+    color = "Algorithm"
+  ) +
+  scale_colour_manual(
+    values = c(
+      "#f0f0f0",
+      "#d9d9d9",
+      "#bdbdbd",
+      "#969696",
+      "#737373",
+      "#525252",
+      "#e31a1c"
+    )
+  ) +
+  geom_point(
+    data = threshold,
+    aes(x = 1 - spec, y = sens),
+    fill = "#e31a1c",
+    colour = "black",
+    size = 3,
+    shape = 21
+  ) +
+  geom_text_repel(
+    data = threshold,
+    aes(x = 1 - spec, y = sens, label = label),
+    nudge_x = -0.03, # move left
+    nudge_y = 0.03, # move up
+    hjust = 1, # anchor on right side
+    vjust = 0, # anchor on bottom
+    direction = "y", # limit movement
+    segment.color = "black",
+    colour = "black",
+    size = 4,
+    force = 0
+  ) +
+  scale_y_continuous(breaks = seq(0, 1, 0.2)) +
+  scale_x_continuous(breaks = seq(0, 1, 0.2)) +
+  theme_bw() +
+  guides(
+    colour = guide_legend(
+      override.aes = list(linewidth = 1.5),
+      order = 1
+    )
+  ) +
+  theme(
+    legend.position = c(0.98, 0.02), # x, y (bottom-right)
+    legend.justification = c(1, 0), # anchor legend by bottom-right corner
+    legend.background = element_rect(
+      fill = "white",
+      colour = "black",
+      linewidth = 0.5
+    ),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 11),
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 11)
+  )
+
+table_to_add_to_figure <- data.frame(
+  Prediction = c("sero +ve", "sero -ve", "sero +ve", "sero -ve"),
+  Truth = c("qPCR +ve", "qPCR +ve", "qPCR -ve", "qPCR -ve"),
+  Freq = c(366, 86, 414, 1769)
+) # manually adding values quoted on PvSeroApp
+
+table_to_add_to_figure_pivot <- table_to_add_to_figure %>%
+  pivot_wider(
+    names_from = "Truth",
+    values_from = "Freq"
+  ) %>%
+  dplyr::select(" " = "Prediction", everything()) %>%
+  column_to_rownames(var = " ")
+
+p4 <- ggtexttable(
+  table_to_add_to_figure_pivot,
+  theme = ttheme(
+    "blank",
+    padding = unit(c(8, 8), "mm"),
+    # body cell text
+    tbody.style = tbody_style(size = 20),
+    # column headers
+    colnames.style = colnames_style(face = "bold", size = 20),
+    # row headers
+    rownames.style = rownames_style(face = "bold", size = 20)
+  )
+) %>%
+  tab_add_hline(at.row = 1:2, row.side = "bottom", linewidth = 1) %>%
+  tab_add_vline(at.column = 1:2, column.side = "right", linewidth = 1)
+
+fig2 <- ggarrange(
+  ggarrange(
+    p1,
+    p2,
+    labels = c("A", "B"),
+    ncol = 2,
+    nrow = 1
+  ),
+  ggarrange(
+    p3,
+    p4,
+    labels = c("C", "D"),
+    ncol = 2,
+    nrow = 1,
+    widths = c(0.6, 0.4)
+  ),
+  nrow = 2,
+  ncol = 1
+)
+ggsave(
+  plot = fig2,
+  here::here("results/manuscript_v1/Fig2.png"),
+  width = 30,
+  height = 25,
+  units = "cm",
+  dpi = 300
+)
+```
+
+## Fig 3: GAM model 
+
+see `RAU_statistical_analysis > rand_forest_perform_inf_cat.qmd`
+
+## Fig 4: Model Comparison 
+
+```{r}
+tuned_wkfl <- readRDS(here("model/all_tuned_model.rds"))
+auc_order <- tuned_wkfl %>%
+  workflowsets::rank_results(select_best = TRUE) %>%
+  dplyr::filter(.metric == "roc_auc") %>%
+  dplyr::arrange(desc(mean)) %>%
+  dplyr::pull(model)
+
+auc_model_rank <- tuned_wkfl %>%
+  workflowsets::autoplot(metric = "roc_auc", select_best = TRUE) +
+  ggplot2::scale_colour_manual(
+    breaks = auc_order, # order legend by descending ROC AUC
+    values = melbourne::melb_trams(
+      8,
+      name = c(
+        "the1",
+        "the70",
+        "the109",
+        "the30",
+        "the19",
+        "the12",
+        "the58",
+        "the48"
+      )
+    ),
+    labels = c(
+      "rand_forest" = "Random Forest",
+      "boost_tree" = "XGBoost",
+      "discrim_quad" = "QDA",
+      "nearest_neighbor" = "k-Nearest Neighbours",
+      "svm_linear" = "Support Vector Machine",
+      "logistic_reg" = "Logistic Regression",
+      "discrim_linear" = "LDA",
+      "naive_Bayes" = "Naive Bayes"
+    )
+  ) +
+  scale_shape_manual(values = 19, guide = "none") +
+  scale_x_continuous(
+    name = "Model Rank",
+    breaks = 1:8,
+    limits = c(0.9, 8.1)
+  ) +
+  scale_y_continuous(
+    name = "AUC",
+    limits = c(0.82, 0.88),
+    breaks = seq(0.82, 0.88, by = 0.02)
+  ) +
+  theme_bw() +
+  labs(color = "Model", y = "AUC") +
+  guides(
+    colour = guide_legend(
+      override.aes = list(linewidth = 1.5, size = 3),
+      order = 1
+    )
+  ) +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text = element_text(size = 11)
+  )
+
+final_models <- readRDS(here("model/all_final_model.rds"))
+all_preds_unsummarised <- final_models %>%
+  collect_predictions(summarize = FALSE)
+roc_auc <- all_preds_unsummarised %>%
+  group_by(model) %>%
+  mutate(
+    model = factor(
+      model,
+      levels = c(
+        "rand_forest",
+        "boost_tree",
+        "discrim_quad",
+        "nearest_neighbor",
+        "svm_linear",
+        "logistic_reg",
+        "discrim_linear",
+        "naive_Bayes"
+      )
+    )
+  ) %>%
+  yardstick::roc_curve(truth = status, .pred_new) %>%
+  parsnip::autoplot() +
+  scale_colour_manual(
+    values = melb_trams(
+      8,
+      name = c(
+        "the1",
+        "the70",
+        "the109",
+        "the30",
+        "the19",
+        "the12",
+        "the58",
+        "the48"
+      )
+    ),
+    labels = c(
+      "rand_forest" = "Random Forest",
+      "logistic_reg" = "Logistic Regression",
+      "svm_linear" = "Support Vector Machine",
+      "boost_tree" = "XGBoost",
+      "nearest_neighbor" = "k-Nearest Neighbours",
+      "discrim_linear" = "LDA",
+      "discrim_quad" = "QDA",
+      "naive_Bayes" = "Naive Bayes"
+    )
+  ) +
+  scale_y_continuous(breaks = seq(0, 1, 0.2)) +
+  scale_x_continuous(breaks = seq(0, 1, 0.2)) +
+  labs(x = "1- Specificity", y = "Sensitivity", colour = "Model") +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text = element_text(size = 11),
+    legend.title = element_text(size = 11),
+    legend.text = element_text(size = 11)
+  )
+
+fig4 <- ggarrange(
+  auc_model_rank,
+  roc_auc,
+  nrow = 1,
+  ncol = 2,
+  common.legend = T,
+  legend = "right",
+  labels = c("A", "B")
+)
+ggsave(
+  plot = fig4,
+  here("results/manuscript_v1/Fig4.png"),
+  width = 30,
+  height = 12.5,
+  units = "cm",
+  dpi = 300
+)
+```
+
+### AUCs + SE 
+```{r}
+auc_summary <- tuned_wkfl %>%
+  workflowsets::collect_metrics() %>%
+  dplyr::filter(.metric == "roc_auc") %>%
+  dplyr::group_by(wflow_id) %>%
+  dplyr::slice_max(mean, n = 1) %>%
+  dplyr::ungroup() %>%
+  dplyr::select(wflow_id, mean, std_err, n) %>%
+  arrange(desc(mean))
+
+auc_summary
+```
+
+Check hyperparameters for Table S2
+
+```{r}
+# Step 1: Extract Hyperparameter values
+var <- getHyperparams(tuned_wkfl)
+var
+```
+
+## Fig 5: Cross-reactivity 
+
+see `cross_reactivity.qmd`
+
+## Fig 6: Google Analytics
+
+```{r}
+# Load Packages
+source(here::here("code/map_packages.R"))
+theme_set(theme_bw())
+world <- ne_countries(scale = "medium", returnclass = "sf")
+```
+
+### 2025-10
+
+```{r}
+google_analytics <- read.delim(
+  "data/google_analytics/reports_snapshot_20251023.csv",
+  skip = 346, # skip first 4 metadata lines
+  nrows = 37, # read only 4 rows of data
+  sep = ".",
+  header = TRUE,
+  fill = TRUE,
+  stringsAsFactors = FALSE
+) %>%
+  separate(
+    City.Active.users,
+    into = c("City", "Active.users"),
+    sep = ",",
+    convert = TRUE
+  )
+
+geo_data <- google_analytics %>%
+  tidygeocoder::geocode(
+    address = City,
+    method = "osm",
+    lat = latitude,
+    long = longitude
+  ) %>%
+  mutate(
+    latitude = ifelse(
+      is.na(latitude) & City == "Mueang Pattani District",
+      6.900,
+      latitude
+    ),
+    longitude = ifelse(
+      is.na(longitude) & City == "Mueang Pattani District",
+      101.250,
+      longitude
+    ),
+    latitude = ifelse(is.na(latitude) & City == "Pak Phriao", 14.100, latitude),
+    longitude = ifelse(
+      is.na(longitude) & City == "Pak Phriao",
+      101.150,
+      longitude
+    )
+  )
+
+# Ensure your points are sf
+geo_sf <- st_as_sf(geo_data, coords = c("longitude", "latitude"), crs = 4326)
+
+# Spatial join: find which country each city is in
+geo_with_country <- st_join(geo_sf, world[, c("name_long", "iso_a3")])
+
+geo_with_country <- geo_with_country %>%
+  rename(Country = name_long) %>%
+  mutate(
+    Country = case_when(
+      City == "Darwin" ~ "Australia",
+      City == "Mueang Pattani District" ~ "Thailand",
+      City == "Kupang" ~ "Indonesia",
+      .default = Country
+    ),
+    iso_a3 = case_when(
+      City == "Darwin" ~ "AUS",
+      City == "Mueang Pattani District" ~ "THA",
+      City == "Kupang" ~ "IDN",
+      City == "France" ~ "FRA",
+      .default = iso_a3
+    )
+  )
+
+country_data <- geo_with_country %>%
+  group_by(iso_a3) %>%
+  summarise(TotalUsers = sum(Active.users, na.rm = TRUE))
+
+world_joined <- st_join(world, country_data, join = st_intersects)
+```
+
+### 2026-05
+
+I have two tags, so need to consolidate data from both tags 
+
+```{r}
+google_analytics_tag1 <- read.delim(
+  here::here("data/google_analytics/demographic_details_city_20260508.csv"),
+  skip = 9, # skip first 4 metadata lines
+  sep = ",",
+  header = TRUE,
+  fill = TRUE,
+  stringsAsFactors = FALSE
+)
+
+google_analytics_tag2 <- read.delim(
+  here::here(
+    "data/google_analytics/demographic_details_city_tag2_20260508.csv"
+  ),
+  skip = 9, # skip first 4 metadata lines
+  sep = ",",
+  header = TRUE,
+  fill = TRUE,
+  stringsAsFactors = FALSE
+)
+
+google_analytics_all <- bind_rows(
+  google_analytics_tag1,
+  google_analytics_tag2
+) %>%
+  group_by(City) %>%
+  summarise(
+    Active.users = sum(Active.users),
+    Event.count = sum(Event.count)
+  )
+
+geo_data <- google_analytics_all %>%
+  tidygeocoder::geocode(
+    address = City,
+    method = "osm",
+    lat = latitude,
+    long = longitude
+  ) %>%
+  # Remove city == (not set)
+  filter(City != "(not set)") %>%
+  mutate(
+    latitude = ifelse(is.na(latitude) & City == "Pak Phriao", 14.100, latitude),
+    longitude = ifelse(
+      is.na(longitude) & City == "Pak Phriao",
+      101.150,
+      longitude
+    )
+  )
+
+# Ensure your points are sf
+geo_sf <- st_as_sf(geo_data, coords = c("longitude", "latitude"), crs = 4326)
+
+# Spatial join: find which country each city is in
+geo_with_country <- st_join(geo_sf, world[, c("name_long", "iso_a3")])
+
+geo_with_country <- geo_with_country %>%
+  rename(Country = name_long) %>%
+  mutate(
+    Country = case_when(
+      City == "Darwin" ~ "Australia",
+      City == "Mueang Pattani District" ~ "Thailand",
+      City == "Ko Lak" ~ "Thailand",
+      City == "Kupang" ~ "Indonesia",
+      City == "Hobart" ~ "Australia",
+      .default = Country
+    ),
+    iso_a3 = case_when(
+      City == "Darwin" ~ "AUS",
+      City == "Hobart" ~ "AUS",
+      City == "Mueang Pattani District" ~ "THA",
+      City == "Ko Lak" ~ "THA",
+      City == "Kupang" ~ "IDN",
+      City == "France" ~ "FRA",
+      Country == "France" ~ "FRA",
+      .default = iso_a3
+    )
+  )
+
+country_data <- geo_with_country %>%
+  group_by(iso_a3) %>%
+  summarise(TotalUsers = sum(Active.users, na.rm = TRUE))
+
+world_joined <- st_join(world, country_data, join = st_intersects)
+```
+
+### Map
+
+```{r}
+ggplot(world_joined) +
+  # Country fill
+  geom_sf(aes(fill = TotalUsers), colour = "#252525") +
+  # Total active users per country
+  scale_fill_gradient(
+    low = "#c7e9c0",
+    high = "#00441b",
+    na.value = "#d9d9d9"
+  ) +
+  # Global coordinates
+  coord_sf(
+    xlim = c(-180, 180),
+    ylim = c(-60, 85),
+    expand = FALSE
+  ) +
+  # Cities as points
+  geom_point(
+    data = geo_data,
+    aes(x = longitude, y = latitude),
+    # position = position_jitter(width = 0.5, height = 0.5),
+    colour = "white",
+    fill = "darkred",
+    alpha = 0.8,
+    shape = 23,
+    size = 2.5
+  ) +
+  # Labels
+  labs(
+    title = "Active PvSeroApp Users by City",
+    x = "Longitude",
+    y = "Latitute",
+    fill = "Total Users"
+  ) +
+  # Theme adjustments
+  theme(
+    panel.background = element_rect(fill = "aliceblue"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text = element_text(size = 11),
+    legend.title = element_text(size = 11),
+    legend.text = element_text(size = 11)
+  )
+ggsave(
+  here("results/manuscript_v1/Fig6.png"),
+  width = 30,
+  height = 20,
+  units = "cm",
+  dpi = 300
+)
+```
+
+# SUPPLEMENT: Figures 
+
+## Figure S1: mtry/min_n 
+
+```{r}
+fitted_model <- readRDS(here("model/rand_forest/PvSeroTaTmodel.rds"))
+
+var_importance <- fitted_model %>%
+  extract_fit_parsnip() %>%
+  vip()
+
+var_gg <- ggplot_build(var_importance)$data[[1]]
+var_gg <- var_gg %>%
+  mutate(
+    group = as.factor(group),
+    group = recode(
+      group,
+      `8` = "PvRBP2b",
+      `7` = "PvEBPII",
+      `6` = "PvMSP1-19",
+      `5` = "PvMSP5",
+      `4` = "Pv-fam-a",
+      `3` = "PvMSP8",
+      `2` = "PvCSS",
+      `1` = "PvPTEX150"
+    )
+  )
+var_imp <- var_gg %>%
+  ggplot(aes(x = y, y = group)) +
+  geom_col() +
+  scale_x_continuous(limits = c(0, 0.08), breaks = seq(0, 0.08, 0.02)) +
+  theme_bw() +
+  labs(x = "Importance", y = "Antigen") +
+  theme(
+    axis.text.x = element_text(size = 12),
+    axis.text.y = element_text(size = 12),
+    axis.title.x = element_text(size = 14),
+    axis.title.y = element_text(size = 14)
+  )
+
+rf_bo <- readRDS(here::here("model/rand_forest/hyperparameter_tuning.rds"))
+
+rf_bo %>% autoplot(type = "performance")
+rf_bo %>% autoplot(type = "parameters")
+
+(mtry_plot <- rf_bo %>%
+  collect_metrics() %>%
+  filter(.metric == "roc_auc") %>%
+  mutate(
+    mtry = factor(mtry),
+    mean = round(as.numeric(mean), 3)
+  ) %>%
+  ggplot(aes(mtry, mean)) +
+  # geom_line(alpha = 0.5, size = 1.5) +
+  geom_point() +
+  geom_rect(
+    data = data.frame(),
+    aes(xmin = 1.5, xmax = 2.5, ymin = -Inf, ymax = Inf),
+    fill = "#fdae61",
+    alpha = 0.2,
+    inherit.aes = FALSE
+  ) +
+  scale_y_continuous(
+    limits = c(0.866, 0.878),
+    breaks = seq(0.866, 0.878, 0.002)
+  ) +
+  labs(y = "AUC") +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(size = 12),
+    axis.text.y = element_text(size = 12),
+    axis.title.x = element_text(size = 14),
+    axis.title.y = element_text(size = 14)
+  ))
+
+(min_n_plot <- rf_bo %>%
+  collect_metrics() %>%
+  filter(.metric == "roc_auc") %>%
+  mutate(min_n = factor(min_n)) %>%
+  ggplot(aes(as.numeric(min_n), mean)) +
+  # geom_line(alpha = 0.5, size = 1.5) +
+  geom_point() +
+  # Add a background rectangle for min_n = 7
+  geom_rect(
+    data = data.frame(), # empty data because we'll manually specify positions
+    aes(xmin = 6.5, xmax = 7.5, ymin = -Inf, ymax = Inf),
+    fill = "#fdae61",
+    alpha = 0.2,
+    inherit.aes = FALSE
+  ) +
+  labs(x = "min_n", y = "AUC") +
+  theme_bw() +
+  scale_y_continuous(
+    limits = c(0.866, 0.878),
+    breaks = seq(0.866, 0.878, 0.002)
+  ) +
+  scale_x_continuous(limits = c(1, 40), breaks = seq(1, 40, 5)) +
+  theme(
+    axis.text.y = element_text(size = 12),
+    axis.title.x = element_text(size = 14),
+    axis.title.y = element_text(size = 14)
+  ))
+# Plot for Supplement
+ggarrange(
+  var_imp,
+  ggarrange(
+    mtry_plot,
+    min_n_plot,
+    ncol = 2,
+    nrow = 1,
+    labels = c("B", "C")
+  ),
+  nrow = 2,
+  labels = c("A")
+)
+ggsave(
+  here::here("results/manuscript_v1/FigS1.png"),
+  width = 25,
+  height = 25,
+  units = "cm",
+  dpi = 300
+)
+```
+
+## Figure S2: Age in GAM 
+
+See analysis in `RAU_statistical_analysis/rand_forest_perform_inf_cat.qmd`
+
+## Figure S3: Model Comparison Stacks
+
+```{r}
+fit_stack <- readRDS(here("model/stack/stacked_model.rds"))
+# Compare to workflowsets
+stack_data <- fit_stack$metrics %>%
+  dplyr::filter(penalty == 0.000010) %>%
+  dplyr::mutate(model = "stack") %>%
+  dplyr::filter(.metric == "roc_auc") %>%
+  dplyr::select(model, .config, roc_auc = mean, std_err)
+fit_workflowsets <- readRDS(here("model/all_final_model.rds"))
+results <- fit_workflowsets %>%
+  workflowsets::rank_results(select_best = TRUE) %>%
+  dplyr::filter(.metric == "roc_auc") %>%
+  dplyr::select(model, .config, roc_auc = mean, std_err, rank) %>%
+  dplyr::bind_rows(stack_data) %>%
+  dplyr::mutate(rank = dense_rank(desc(roc_auc)))
+new_auc_order <- results %>%
+  dplyr::arrange(desc(roc_auc)) %>%
+  dplyr::pull(model)
+# Part 1: All statistics
+p3 <- results %>%
+  ggplot(aes(rank, roc_auc, colour = model)) +
+  geom_point() +
+  geom_errorbar(
+    aes(
+      ymin = roc_auc - 1 * std_err,
+      ymax = roc_auc + 1 * std_err
+    ),
+    width = diff(range(results$rank)) / 75
+  ) +
+  scale_colour_manual(
+    breaks = new_auc_order,
+    values = melbourne::melb_trams(
+      9,
+      name = c(
+        "the1",
+        "the70",
+        "the57",
+        "the109",
+        "the30",
+        "the19",
+        "the12",
+        "the58",
+        "the48"
+      )
+    ),
+    labels = c(
+      "stack" = "Stack Ensemble",
+      "rand_forest" = "Random Forest",
+      "boost_tree" = "XGBoost",
+      "discrim_quad" = "QDA",
+      "nearest_neighbor" = "k-Nearest Neighbours",
+      "svm_linear" = "Support Vector Machine",
+      "logistic_reg" = "Logistic Regression",
+      "discrim_linear" = "LDA",
+      "naive_Bayes" = "Naive Bayes"
+    )
+  ) +
+  scale_x_continuous(
+    name = "Model Rank",
+    breaks = 1:9,
+    limits = c(0.9, 9.1)
+  ) +
+  scale_y_continuous(
+    name = "AUC",
+    limits = c(0.82, 0.88),
+    breaks = seq(0.82, 0.88, by = 0.02)
+  ) +
+  theme_bw() +
+  labs(color = "Model", y = "AUC") +
+  guides(
+    colour = guide_legend(
+      override.aes = list(linewidth = 1.5, size = 3),
+      order = 1
+    )
+  )
+# Plot: Accuracy, Brier Class, Num_Members, ROC/AUC
+options(scipen = 999)
+p1 <- fit_stack %>%
+  stacks::autoplot() +
+  theme_bw() +
+  labs(x = "Penalty", y = "Mean") +
+  facet_wrap(
+    ~.metric,
+    ncol = 1, # ensures one column
+    scales = "free_y",
+    labeller = as_labeller(
+      c(
+        "accuracy" = "Accuracy",
+        "brier_class" = "Brier Class",
+        "num_members" = "Number of Contributing Models",
+        "roc_auc" = "AUC"
+      )
+    )
+  ) +
+  scale_x_log10(
+    breaks = 10^seq(-6, -1, by = 1)
+  )
+# Plot: Weights
+# get the ggplot object and then extract the built data
+p <- fit_stack %>% stacks::autoplot(type = "weights")
+built <- ggplot_build(p)$data[[1]]
+built <- built %>%
+  mutate(
+    model_label = recode(
+      fill,
+      "rand_forest" = "Random Forest",
+      "boost_tree" = "XGBoost",
+      "nearest_neighbor" = "kNN",
+      "discrim_quad" = "QDA"
+    ),
+    model = case_when(
+      model_label == "#00BFC4" ~ "QDA",
+      model_label == "#7CAE00" ~ "kNN",
+      model_label == "#F8766D" ~ "XGBoost",
+      model_label == "#C77CFF" ~ "Random Forest",
+      .default = "check"
+    )
+  )
+# base plot, now with labels
+p2 <- built %>%
+  ggplot(aes(x = y, y = x, fill = model)) +
+  geom_col() +
+  geom_text(
+    aes(label = model),
+    position = position_stack(vjust = 0.5),
+    color = "white",
+    size = 3.5
+  ) +
+  scale_fill_manual(
+    breaks = c("Random Forest", "XGBoost", "kNN", "QDA"),
+    values = melbourne::melb_trams(
+      4,
+      name = c("the1", "the70", "the30", "the109")
+    )
+  ) +
+  theme_bw() +
+  # scale_x_continuous(breaks = built$x, labels = built$model) +
+  guides(fill = "none") +
+  labs(x = "Model", y = "Weight") +
+  coord_flip()
+
+ggarrange(
+  p1,
+  ggarrange(
+    p2,
+    p3,
+    labels = c("B", "C"),
+    widths = c(1, 1.25)
+  ),
+  labels = c("A", ""),
+  nrow = 2,
+  ncol = 1,
+  heights = c(1.25, 1)
+)
+ggsave(
+  here::here("results/manuscript_v1/FigS3.png"),
+  width = 25,
+  height = 20,
+  units = "cm",
+  dpi = 300
+)
+```
+
+## Figure S4: Model Validation 
+
+```{r}
+# AUC
+indo_top_models_auc <- read.csv(here::here(
+  "model/Top_Models_AUC_Indonesian.csv"
+)) %>%
+  as_tibble()
+indo_stack_auc <- read.csv(
+  here::here("model/stack/stack_sens_spec_performance_metrics.csv")
+) %>%
+  as_tibble() %>%
+  dplyr::filter(group == "max_sens_spec") %>%
+  dplyr::select(-group) %>%
+  dplyr::filter(.metric == "roc_auc") %>%
+  dplyr::mutate(model = "stack")
+all_auc <- indo_top_models_auc %>%
+  dplyr::bind_rows(indo_stack_auc) %>%
+  dplyr::mutate(rank = dense_rank(desc(.estimate))) %>%
+  dplyr::select(roc_auc = .estimate, model, rank)
+auc_order <- all_auc %>% dplyr::arrange(desc(roc_auc)) %>% dplyr::pull(model)
+
+validated_stack_topmodels_AUC <- all_auc %>%
+  ggplot(aes(rank, roc_auc, colour = model)) +
+  geom_point(size = 2) +
+  scale_colour_manual(
+    breaks = auc_order,
+    values = melbourne::melb_trams(
+      9,
+      name = c(
+        "the70",
+        "the57",
+        "the1",
+        "the19",
+        "the109",
+        "the12",
+        "the58",
+        "the48",
+        "the30"
+      )
+    ),
+    labels = c(
+      "stack" = "Stack Ensemble",
+      "rand_forest" = "Random Forest",
+      "boost_tree" = "XGBoost",
+      "discrim_quad" = "QDA",
+      "nearest_neighbor" = "k-Nearest Neighbours",
+      "svm_linear" = "Support Vector Machine",
+      "logistic_reg" = "Logistic Regression",
+      "discrim_linear" = "LDA",
+      "naive_bayes" = "Naive Bayes"
+    )
+  ) +
+  scale_x_continuous(
+    name = "Model Rank",
+    breaks = 1:9,
+    limits = c(0.9, 9.1)
+  ) +
+  scale_y_continuous(
+    name = "AUC",
+    limits = c(0.88, 0.94),
+    breaks = seq(0.88, 0.94, by = 0.02)
+  ) +
+  theme_bw() +
+  labs(color = "Model", y = "AUC") +
+  theme(
+    axis.text = element_text(size = 12),
+    axis.title = element_text(size = 14)
+  )
+
+indo_top_models_roc_data <- read.csv(here::here(
+  "model/Top_Models_ROC_Indonesian.csv"
+)) %>%
+  as_tibble()
+indo_stack_roc_data <- read.csv(here::here(
+  "model/stack/stack_roc_curve.csv"
+)) %>%
+  as_tibble()
+auc_order <- read.csv(here("stack_auc_order.csv")) %>% pull(x)
+# Compare to workflowsets
+all_roc_data <- indo_stack_roc_data %>%
+  dplyr::mutate(model = "stack") %>%
+  bind_rows(indo_top_models_roc_data)
+
+validated_stack_topmodels_ROC <- all_roc_data %>%
+  ggplot(aes(1 - specificity, sensitivity, colour = model)) +
+  geom_line(linewidth = 0.4) +
+  geom_abline(linetype = "dashed") +
+  labs(x = "1 - Specificity", y = "Sensitivity", colour = "Model") +
+  scale_y_continuous(breaks = seq(0, 1, 0.2)) +
+  scale_x_continuous(breaks = seq(0, 1, 0.2)) +
+  scale_colour_manual(
+    breaks = auc_order,
+    values = melbourne::melb_trams(
+      9,
+      name = c(
+        "the70",
+        "the57",
+        "the1",
+        "the19",
+        "the109",
+        "the12",
+        "the58",
+        "the48",
+        "the30"
+      )
+    ),
+    labels = c(
+      "stack" = "Stack Ensemble",
+      "rand_forest" = "Random Forest",
+      "boost_tree" = "XGBoost",
+      "discrim_quad" = "QDA",
+      "nearest_neighbor" = "k-Nearest Neighbours",
+      "svm_linear" = "Support Vector Machine",
+      "logistic_reg" = "Logistic Regression",
+      "discrim_linear" = "LDA",
+      "naive_bayes" = "Naive Bayes"
+    )
+  ) +
+  theme_bw() +
+  guides(
+    colour = guide_legend(
+      override.aes = list(linewidth = 1.5, size = 4),
+      order = 1
+    )
+  ) +
+  theme(
+    axis.text = element_text(size = 12),
+    axis.title = element_text(size = 14)
+  )
+ggarrange(
+  validated_stack_topmodels_ROC,
+  validated_stack_topmodels_AUC,
+  nrow = 1,
+  ncol = 2,
+  labels = c("A", "B"),
+  common.legend = T,
+  legend = "right"
+)
+ggsave(
+  here("results/manuscript_v1/FigS4.png"),
+  width = 30,
+  height = 12.5,
+  units = "cm",
+  dpi = 300
+)
+```
+
+## Figure S5: Cross-reactivity RAU 
+
+Paolo to provide figure. 
+
+```{r}
+d_negs <- d_all %>%
+  filter(inf_stat == "negative") %>%
+  dplyr::select(-c(s16, LF001))
+
+options(scipen = 999)
+cutoff <- d_negs %>%
+  # data manipulation
+  pivot_longer(
+    cols = top_8_combo,
+    names_to = "Antigen",
+    values_to = "RAU"
+  ) %>%
+  # removing one outlier for PvCSS in Thailand that has RAU > 0.01
+  filter(RAU <= 0.01) %>%
+  group_by(Antigen) %>%
+  # calculate mean and sd
+  summarise(
+    # median = median(RAU),
+    mean = mean(RAU),
+    sd = sd(RAU)
+  ) %>%
+  mutate(
+    seropositivity_cutoff = mean + 2 * sd #,
+    # cutoff_w_median = median + 2*sd
+  )
+write.csv(cutoff, here("data/seropositivity_cutoff.csv"), row.names = F)
+
+# Understanding mean vs. median; sd vs. se
+d_negs %>%
+  pivot_longer(
+    cols = top_8_combo,
+    names_to = "Antigen",
+    values_to = "RAU"
+  ) %>%
+  filter(RAU <= 0.01) %>%
+  group_by(Antigen) %>%
+  summarise(
+    # n: number of samples
+    n = n(),
+    # sd: measure of dispersion of data relative to the mean (square root of the variance) (sensitive to outliers)
+    # quantifies variability in the dataset, does not change systematically with sample size; stabilises as sample size increases
+    # used to describe spread of data (descriptive)
+    sd = sd(RAU),
+    # mean: sum divided by count (sensitive to outliers)
+    mean = mean(RAU),
+    # median: middle value in an ordered dataset (less sensitive to outliers than the mean)
+    median = median(RAU)
+  ) %>%
+  mutate(
+    # calculate the standard error of the mean: standard deviation divided by sqrt of sample's (n)
+    # se: measure of accuracy of mean, represents how far the mean is from the true population mean; decreases as sample size increases
+    # used to determine accuracy of the mean or calculate confidence intervals
+    se_mean = sd / sqrt(n),
+    # calculate seropositivity cut-off: mean + two standard deviations
+    seropositivity_cutoff = mean + 2 * sd,
+    # calculate seropositivity cut-off with median: median + two standard deviations
+    cutoff_w_median = median + 2 * sd
+  )
+
+cutoff %>%
+  mutate(
+    mean = round(mean, 6),
+    sd = round(sd, 6),
+    seropositivity_cutoff = round(seropositivity_cutoff, 6)
+  )
+```
+
+# TABLE INFORMATION
+
+## Table S1: Single Antigen AUCs
+
+```{r}
+# Calculate AUC
+auc_df <- single_antigen_roc_data %>%
+  mutate(FPR = 1 - specificity) %>%
+  group_by(antigen_name) %>%
+  arrange(FPR) %>%
+  summarise(
+    AUC = sum(diff(FPR) * (head(sensitivity, -1) + tail(sensitivity, -1)) / 2)
+  ) %>%
+  arrange()
+# Calculate Standard Error
+n_pos <- sum(d$status == "new")
+n_neg <- sum(d$status == "old")
+auc_df %>%
+  mutate(
+    Q1 = AUC / (2 - AUC),
+    Q2 = 2 * AUC^2 / (1 + AUC),
+    SE_AUC = sqrt(
+      (AUC *
+        (1 - AUC) +
+        (n_pos - 1) * (Q1 - AUC^2) +
+        (n_neg - 1) * (Q2 - AUC^2)) /
+        (n_pos * n_neg)
+    )
+  ) %>%
+  arrange(desc(AUC))
+```
+
+## Table S2: Join all top combinations into one df 
+
+```{r}
+# Step 1: File names from the folder (full paths)
+filenames <- list.files(
+  here::here("results/rand_forest/top_combinations/"),
+  pattern = "\\_df.csv$",
+  full.names = TRUE
+)
+
+# Step 2: Initialize empty list to store results
+results <- list()
+
+# Step 3: Loop through files
+for (i in seq_along(filenames)) {
+  df <- read.csv(filenames[i]) %>%
+    dplyr::arrange(dplyr::desc(mean_auc), SE) %>%
+    dplyr::mutate(
+      top = as.integer(stringr::str_extract(basename(filenames[i]), "\\d+"))
+    )
+
+  results[[i]] <- df
+}
+
+# Step 4: Combine into one dataframe
+final_df <- dplyr::bind_rows(results)
+final_df_csv <- here::here("results/manuscript_v1/STable_2.csv")
+write.csv(final_df, final_df_csv, row.names = F)
+message(paste0("File saved at: ", final_df_csv))
+```
+
+# ARCHIVE Figures 
+
+## SI Figure: RBP2b.P87 vs. RBP2b.P25
+
+```{r}
+# Plot correlations between P25 and P87
+d_correlations <- read.csv(here::here(
+  "data/longitudinal_cohorts/October_rerun_with_inf.csv"
+)) %>% # This data is the March data plus the 163 replaced, but also including infection status and cohort
+  # MAGPIX_run_March_2024.csv would also work the same, apart from you would need to change SampleID to sampleid.
+  filter(
+    !SampleID %in%
+      as.list(
+        read.csv(here::here(
+          "data/longitudinal_cohorts/d_OCT_rerun_samples.csv"
+        ))$SampleID
+      )
+  )
+d_correlations$inf_stat <- factor(
+  d_correlations$inf_stat,
+  levels = c("current", "recent", "old", "never", "negative"),
+  ordered = T
+)
+
+d_correlations %>%
+  ggplot(aes(x = log(RBP2b.P87), y = log(RBP2b.P25))) +
+  geom_point(aes(color = inf_stat), size = 1.25) +
+  stat_cor(method = "pearson", size = 4) +
+  labs(
+    x = "Log-transformed RBP2b.P87 RAU",
+    y = "Log-transformed RBP2b.P25 RAU",
+    color = "Infection status"
+  ) +
+  scale_color_brewer(palette = "Paired") +
+  theme_bw()
+# ggsave(here("results/rand_forest/correlations_P25_P87.png"), height = 12, width = 14, units = "cm")
+```
+
+## SI Figure 2: RAMA/LF001 
+
+```{r}
+d_correlations %>%
+  dplyr::select(SampleID, all_of(top_combo), LF010, status)
+```
+
+## Map
+
+```{r}
+
+# ggplot(world_joined) +
+#   # Country fill
+#   geom_sf(aes(fill = TotalUsers), colour = "#252525") +
+#   scale_fill_gradient(low = "#c7e9c0", high = "#c7e9c0", na.value = "#d9d9d9") +
+#   coord_sf(
+#     xlim = c(-180, 180),   # longitude range
+#     ylim = c(-60, 85),     # latitude range (cuts off Antarctica)
+#     expand = FALSE
+#   ) +
+# Optional: labels
+# geom_text(
+#   data = geo_data,
+#   aes(x = longitude, y = latitude, label = City),
+#   nudge_y = 1, size = 3
+# ) +
+#   # Cities as points
+#   geom_point(
+#     data = geo_data,
+#     aes(x = longitude, y = latitude, size = Active.users),
+#     colour = "darkred", alpha = 0.8
+#   ) +
+#   scale_size_continuous(range = c(3, 10)) +
+#   labs(
+#     title = "Active Users by City",
+#     size = "Active Users"
+#   ) +
+#   theme(
+#     panel.background = element_rect(fill = "aliceblue"),
+#     panel.grid.major = element_blank(),
+#     panel.grid.minor = element_blank()
+#   ) +
+#   guides(fill = "none")
+```
+
+# Non-publication Figures
+## PNG/ETH Std curves
+
+```{r}
+old_names <- c(
+  "EBP",
+  "LF005",
+  "LF010",
+  "LF016",
+  "MSP8",
+  "RBP2b.P87",
+  "PTEX150",
+  "PvCSS"
+)
+new_names <- c(
+  "PvEBP",
+  "Pv-fam-a",
+  "PvMSP5",
+  "PvMSP1-19",
+  "PvMSP8",
+  "PvRBP2b",
+  "PvPTEX150",
+  "PvCSS"
+)
+name_lookup <- setNames(new_names, old_names)
+
+png_eth_stds <- read.csv("../data/app_mfi_rau/png_eth_stds.csv") %>%
+  pivot_longer(
+    cols = c(eth_mfi, png_mfi),
+    names_to = "Location",
+    values_to = "MFI"
+  ) %>%
+  rename(Antigen = antigen) %>%
+  mutate(
+    Location = gsub("_mfi", "", Location),
+    Location = factor(
+      Location,
+      levels = c("png", "eth"),
+      labels = c("PNG", "Ethiopia (1)")
+    ),
+    Sample = factor(
+      Sample,
+      c("S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9", "S10")
+    ),
+    Antigen = dplyr::recode(Antigen, !!!name_lookup)
+  )
+stds <- read_excel("../data/app_mfi_rau/positive_pools.xlsx") %>%
+  pivot_longer(
+    cols = c(Ethi_MFI, Pak_MFI, Brazil_MFI, Global_MFI),
+    names_to = "Location",
+    values_to = "MFI"
+  ) %>%
+  mutate(
+    Location = gsub("_MFI", "", Location),
+    Location = factor(
+      Location,
+      levels = c("Ethi", "Pak", "Brazil", "Global"),
+      labels = c("Ethiopia (2)", "Pakistan", "Brazil", "Global")
+    ),
+    Sample = factor(
+      Sample,
+      c("S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9", "S10")
+    ),
+    Antigen = dplyr::recode(Antigen, !!!name_lookup)
+  )
+
+all_stds <- bind_rows(png_eth_stds, stds)
+
+all_stds %>%
+  ggplot(aes(x = Sample, y = MFI, color = Location, group = Location)) +
+  geom_point() +
+  geom_line() +
+  scale_y_log10(breaks = c(0, 10, 100, 1000, 10000)) +
+  scale_colour_manual(
+    values = c("#9970ab", "#5aae61", "#1f78b4", "#e31a1c", "#ff7f00", "#b15928")
+  ) +
+  labs(x = "Standard Curve", y = "MFI", colour = "Location") +
+  facet_wrap(~Antigen) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+# Re-organisation of manuscript
+
+## Main: Figures
+
+- Fig 1: Same
+- Fig 2: Old Fig 4 [unchanged]
+- Fig 5: Cross-reactivity [unchanged]
+- Fig 6: PvSeroApp [unchanged]
+
+```{r}
+ggsave(
+  plot = fig4,
+  here("results/manuscript_v2/Fig2.png"),
+  width = 30,
+  height = 12.5,
+  units = "cm",
+  dpi = 300
+)
+```
+
+### Fig 3: Random forest
+
+- Panel A: ROC curve (non-bootstrapped results) [with balanced sens/spec; add 90% spec and 90% sens as well?? make options]
+- Panel B: confusion matrix: this qmd 
+- Panel C: rectangles: `code/RAU_statistical_analysis/rand_forest_perform_inf_cat.qmd`
+- Panel D: cohort infection status: `code/RAU_statistical_analysis/rand_forest_perform_inf_cat.qmd`
+
+#### Panel A: 
+
+Note, using `rand_forest_roc.csv` as it was generated using `getCrossValidation()` in the `_targets.R` script. 
+Archiving `rand_forest_roc_curve.csv`.
+
+```{r}
+top_8_roc_curve <- read.csv(
+  here::here("results/rand_forest/rand_forest_roc.csv")
+) %>%
+  dplyr::as_tibble()
+
+threshold <- read.csv(
+  here::here(
+    "model/rand_forest/random_forest_sens_spec_performance_metrics.csv"
+  )
+)
+threshold_balanced <- threshold %>%
+  dplyr::rename(sens_spec = group) %>%
+  filter(sens_spec == "max_sens_spec") %>%
+  pivot_wider(
+    id_cols = c(.estimator, sens_spec),
+    names_from = ".metric",
+    values_from = ".estimate"
+  ) %>%
+  mutate(
+    model_set = "Top 8 (AUC = 0.876 [SE: 0.004])",
+    label = c("81.0% sensitivity\n81.0% specificity")
+  )
+
+max_x <- threshold_balanced %>% pull(spec)
+max_y <- threshold_balanced %>% pull(sens)
+```
+
+##### Balanced
+
+```{r}
+# plot ROC Curve, add point and values at balanced threshold
+fig3a <- top_8_roc_curve %>%
+  ggplot(aes(1 - specificity, sensitivity)) +
+  geom_line(linewidth = 0.4) +
+  geom_abline(linetype = "dashed") +
+  labs(
+    x = "1 - Specificity",
+    y = "Sensitivity"
+  ) +
+  geom_point(
+    data = threshold_balanced,
+    aes(x = 1 - spec, y = sens),
+    fill = "#e31a1c",
+    colour = "black",
+    size = 3,
+    shape = 21
+  ) +
+  geom_text_repel(
+    data = threshold_balanced,
+    aes(x = 1 - spec, y = sens, label = label),
+    nudge_x = -0.03, # move left
+    nudge_y = 0.03, # move up
+    hjust = 1, # anchor on right side
+    vjust = 0, # anchor on bottom
+    direction = "y", # limit movement
+    segment.color = "black",
+    colour = "black",
+    size = 4,
+    force = 0
+  ) +
+  scale_y_continuous(breaks = seq(0, 1, 0.2)) +
+  scale_x_continuous(breaks = seq(0, 1, 0.2)) +
+  geom_hline(yintercept = max_y, linetype = "dashed", color = "red") +
+  geom_vline(xintercept = 1 - max_x, linetype = "dashed", color = "red") +
+  theme_bw() +
+  guides(
+    colour = guide_legend(
+      override.aes = list(linewidth = 1.5),
+      order = 1
+    )
+  ) +
+  theme(
+    legend.position = c(0.98, 0.02), # x, y (bottom-right)
+    legend.justification = c(1, 0), # anchor legend by bottom-right corner
+    legend.background = element_rect(
+      fill = "white",
+      colour = "black",
+      linewidth = 0.5
+    ),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 11),
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 11)
+  )
+```
+
+
+##### 90% sens, 90% spec as well 
+
+```{r}
+# option: add 90% sens and 90% spec
+threshold_all <- threshold %>%
+  dplyr::rename(sens_spec = group) %>%
+  filter(sens_spec %in% c("max_sens_spec", "90_sens", "90_spec")) %>%
+  pivot_wider(
+    id_cols = c(.estimator, sens_spec),
+    names_from = ".metric",
+    values_from = ".estimate"
+  ) %>%
+  mutate(
+    label = c(
+      "81% sensitivity\n81% specificity",
+      "90% sensitivity\n62% specificity",
+      "68% sensitivity\n90% specificity"
+    )
+  )
+fig3a_v2 <- top_8_roc_curve %>%
+  ggplot(aes(1 - specificity, sensitivity)) +
+  geom_line(linewidth = 0.4) +
+  geom_abline(linetype = "dashed") +
+  labs(
+    x = "1 - Specificity",
+    y = "Sensitivity"
+  ) +
+  geom_point(
+    data = threshold_all,
+    aes(x = 1 - spec, y = sens, fill = label),
+    colour = "black",
+    size = 3,
+    shape = 21
+  ) +
+  geom_text_repel(
+    data = threshold_all,
+    aes(x = 1 - spec, y = sens, label = label),
+    nudge_x = -0.03, # move left
+    nudge_y = 0.03, # move up
+    # hjust = 1, # anchor on right side
+    vjust = 0, # anchor on bottom
+    direction = "y", # limit movement
+    segment.color = "black",
+    colour = "black",
+    size = 4,
+    force = 0
+  ) +
+  scale_y_continuous(breaks = seq(0, 1, 0.2)) +
+  scale_x_continuous(breaks = seq(0, 1, 0.2)) +
+  theme_bw() +
+  guides(
+    colour = guide_legend(
+      override.aes = list(linewidth = 1.5),
+      order = 1
+    )
+  ) +
+  theme(
+    legend.position = c(0.98, 0.02), # x, y (bottom-right)
+    legend.justification = c(1, 0), # anchor legend by bottom-right corner
+    legend.background = element_rect(
+      fill = "white",
+      colour = "black",
+      linewidth = 0.5
+    ),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 11),
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 11)
+  )
+```
+
+
+#### All
+
+```{r}
+ggarrange(
+  ggarrange(
+    fig3a,
+    p4,
+    ncol = 2,
+    nrow = 1,
+    labels = c("A", "B")
+  ),
+  ncol = 1,
+  nrow = 2,
+  fig3cd
+)
+
+ggsave(
+  here("results/manuscript_v2/Fig3.png"),
+  height = 25,
+  width = 35,
+  units = "cm"
+)
+```
+
+### Fig 4: Panel size 
+
+- Panel A: Dimishing returns AUC/sens/spec based on bootstrapped results  
+- Panel B: ROC curve of top combinations ? 
+
+From `code/bootstrapping_analysis/panel_size_results.qmd` document 
+
+```{r}
+
+```
+
+## Main: Tables
+
+- Table 1: Old v. new constructs
+
+### Table 2: Top 2 to 8 Combinations
+
+From `boostrapping_analysis.qmd` document 
+
+```{r}
+
+```
+
+## Supplement: Figures
+
+- Figure S2: Multi-algorithm [unchanged, Fig S3]
+- Figure S3: Validation [unchanged, Fig S4]
+- Figure S5: Age and RF classification performance [unchanged]
+- Figure S6: Concordance and discordance in serostatus classification
+- Figure S7: Classification across varying time since last detection categories 
+- Figure S8: Pf and Pm Malaysia [unchanged, Fig S6]
+- Figure S9: Comparison of algorithms with less conservative [unchanged, Fig S7]
+
+```{r}
+
+```
+
+### Figure S1: Single Antigen AUROC Old v New
+
+Add standard error calculation for AUC. Not sure where this code has gone but adding in here. 
+
+<!-- #### Fig S1A: Old Panel  -->
+
+<!-- ```{r} -->
+<!-- roc_data_subset <- read.csv(here::here("results/pvserotat_v1/MW_final_roc.csv")) -->
+<!-- sfig1a <- roc_data_subset %>% -->
+<!--   mutate( -->
+<!--     antigen_name = factor( -->
+<!--       antigen_name, -->
+<!--       levels = c( -->
+<!--         "PvRBP2b", -->
+<!--         "PvRAMA", -->
+<!--         "PvMSP1-19", -->
+<!--         "unspecified [PVX_112670]", -->
+<!--         "Pv-fam-a [PVX_096995]", -->
+<!--         "PvEBPII", -->
+<!--         "PvMSP8", -->
+<!--         "PvMSP3.10" -->
+<!--       ), -->
+<!--       labels = c( -->
+<!--         "PvRBP2b\n[aa: 161-1,454]", -->
+<!--         "PvRAMA", -->
+<!--         "PvMSP1-19", -->
+<!--         "unspecified\n[PVX_112670]", -->
+<!--         "Pv-fam-a\n[PVX_096995]", -->
+<!--         "PvEBPII", -->
+<!--         "PvMSP8", -->
+<!--         "PvMSP3.10" -->
+<!--       ), -->
+<!--       ordered = T -->
+<!--     ) -->
+<!--   ) %>% -->
+<!--   ggplot(aes( -->
+<!--     x = 1 - specificity, -->
+<!--     y = sensitivity, -->
+<!--     color = antigen_name -->
+<!--   )) + -->
+<!--   #   geom_line() + -->
+<!--   geom_step() + -->
+<!--   geom_abline(linetype = "dashed") + -->
+<!--   scale_y_continuous(breaks = seq(0, 1, 0.2)) + -->
+<!--   scale_x_continuous(breaks = seq(0, 1, 0.2)) + -->
+<!--   scale_colour_manual( -->
+<!--     values = c( -->
+<!--       "#787e7f", # pvrbp2b -->
+<!--       "#b0bf30", # pvrama -->
+<!--       "#e6772d", # pvmsp1-19 -->
+<!--       "#007d85", # unspecified -->
+<!--       "#e684ab", # pv-fam-a diff -->
+<!--       "#7f73a7", # pvebpII -->
+<!--       "#487954", # pvmsp8 -->
+<!--       "#464387" # pvmsp3 -->
+<!--     ) -->
+<!--   ) + -->
+<!--   labs(x = "1 - Specificity", y = "Sensitivity", colour = "Antigen") + -->
+<!--   guides( -->
+<!--     colour = guide_legend( -->
+<!--       override.aes = list(size = 3, linewidth = 1.5), -->
+<!--       order = 1 -->
+<!--     ) -->
+<!--   ) + -->
+<!--   theme( -->
+<!--     axis.title = element_text(size = 12), -->
+<!--     axis.text = element_text(size = 11), -->
+<!--     legend.title = element_text(size = 12), -->
+<!--     legend.text = element_text(size = 11) -->
+<!--   ) + -->
+<!--   theme_bw() -->
+<!-- ``` -->
+
+#### Fig S1A: Recalculated Old Panel
+
+```{r}
+roc_data_new <- read_csv(
+  here::here("results/pvserotat_v1/MW_final_roc_new_calc.csv")
+)
+sfig1a <- roc_data_new %>%
+  mutate(
+    antigen_name = factor(
+      antigen_name,
+      levels = c(
+        "PvRBP2b",
+        "PvRAMA",
+        "PvMSP1-19",
+        "unspecified [PVX_112670]",
+        "Pv-fam-a [PVX_096995]",
+        "PvEBPII",
+        "PvMSP8",
+        "PvMSP3.10"
+      ),
+      labels = c(
+        "PvRBP2b\n[aa: 161-1,454]",
+        "PvRAMA",
+        "PvMSP1-19",
+        "unspecified\n[PVX_112670]",
+        "Pv-fam-a\n[PVX_096995]",
+        "PvEBPII",
+        "PvMSP8",
+        "PvMSP3.10"
+      ),
+      ordered = T
+    )
+  ) %>%
+  ggplot(aes(
+    x = 1 - specificity,
+    y = sensitivity,
+    color = antigen_name
+  )) +
+  geom_line() +
+  geom_abline(linetype = "dashed") +
+  scale_y_continuous(breaks = seq(0, 1, 0.2)) +
+  scale_x_continuous(breaks = seq(0, 1, 0.2)) +
+  scale_colour_manual(
+    values = c(
+      "#787e7f", # pvrbp2b
+      "#b0bf30", # pvrama
+      "#e6772d", # pvmsp1-19
+      "#007d85", # unspecified
+      "#e684ab", # pv-fam-a diff
+      "#7f73a7", # pvebpII
+      "#487954", # pvmsp8
+      "#464387" # pvmsp3
+    )
+  ) +
+  labs(x = "1 - Specificity", y = "Sensitivity", colour = "Antigen") +
+  guides(
+    colour = guide_legend(
+      override.aes = list(size = 3, linewidth = 1.5),
+      order = 1
+    )
+  ) +
+  theme(
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 11),
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 11)
+  ) +
+  theme_bw()
+```
+
+#### Fig S1B: New Panel 
+```{r}
+# change colour palette
+sfig1b <- single_antigen_roc_data %>%
+  mutate(
+    antigen_name = factor(
+      antigen_name,
+      levels = c(
+        "RBP2b.P87",
+        "LF016",
+        "LF005",
+        "EBP",
+        "MSP8",
+        "PTEX150",
+        "LF010",
+        "PvCSS",
+        "LF001",
+        "s16"
+      ),
+      labels = c(
+        "PvRBP2b\n[aa: 169-470]",
+        "PvMSP1-19",
+        "Pv-fam-a\n[PVX_096995]",
+        "PvEBPII",
+        "PvMSP8",
+        "PvPTEX150",
+        "PvMSP5",
+        "PvCSS",
+        "PvRAMA",
+        "PvS16"
+      ),
+      ordered = T
+    )
+  ) %>%
+  ggplot2::ggplot(aes(
+    x = 1 - specificity,
+    y = sensitivity,
+    color = antigen_name,
+    group = antigen_name
+  )) +
+  geom_line() +
+  geom_abline(linetype = "dashed") +
+  labs(x = "1 - Specificity", y = "Sensitivity", colour = "Antigen") +
+  scale_y_continuous(breaks = seq(0, 1, 0.2)) +
+  scale_x_continuous(breaks = seq(0, 1, 0.2)) +
+  scale_colour_manual(
+    values = c(
+      "#787e7f", # pvrbp2b
+      "#e6772d", # pvmsp1-19
+      "#175369", # pv-fam-a
+      "#7f73a7", # pvebpII
+      "#487954", # pvmsp8
+      "#9e725c", # pvptex150
+      "#fcd668", # pvmsp5
+      "#0095c7", # pvcss
+      "#b0bf30", # pvrama
+      "#cf3f3a" # s16
+    )
+  ) +
+  guides(
+    colour = guide_legend(
+      override.aes = list(size = 3, linewidth = 1.5),
+      order = 1
+    )
+  ) +
+  theme(
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 11),
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 11)
+  ) +
+  theme_bw()
+```
+
+#### Join 
+
+```{r}
+ggarrange(
+  sfig1a,
+  sfig1b,
+  labels = c("A", "B"),
+  common.legend = F
+)
+ggsave(
+  here("results/manuscript_v2/FigS1.png"),
+  width = 30,
+  height = 12.5,
+  units = "cm",
+  dpi = 300
+)
+```
+
+### Figure S4: VIP and Hyperparams
+
+```{r}
+# Plot for Supplement
+ggarrange(
+  ggarrange(
+    mtry_plot,
+    min_n_plot,
+    ncol = 2,
+    nrow = 1,
+    labels = c("A", "B")
+  ),
+  var_imp,
+  nrow = 2,
+  labels = c("", "C")
+)
+ggsave(
+  here::here("results/manuscript_v2/FigS4.png"),
+  width = 25,
+  height = 25,
+  units = "cm",
+  dpi = 300
+)
+```
+
+## Supplement: Tables
+
+- Table S1: Demographic characteristics [unchanged]
+- Table S2: Model comparison with optimised hyperparameters [unchanged]
+- Table S3: Adjusted odds ratios [unchanged]
+- Table S5: Sequence comparison [unchanged]
+- Table S6: Seropositivity cut-off [unchanged]
+
+Question is what do we do with the table of the gene ID, Chr, gene annotation, allele, construct size, expression systen, provider, function. My gut is that we remove this as this is too much information and we have the key information in Table 1 now. We can add the chromosome info, allele and function in the text.
+
+### Table S4: Table of top combinations [bootstrapped]
+
+### Old table to text info
+
+```{r}
+text_info <- data.frame(
+  gene_id = c(
+    "PVX_087885",
+    "PVX_096995",
+    "PVX_000930",
+    "PVX_003770",
+    "PVX_099980",
+    "PVX_094255",
+    "PVX_097625",
+    "PVX_084720",
+    "PVX_086200",
+    "KMZ83376.1"
+  ),
+  gene_db = c(
+    "plasmodb",
+    "plasmodb",
+    "plasmodb",
+    "plasmodb",
+    "plasmodb",
+    "plasmodb",
+    "plasmodb",
+    "plasmodb",
+    "plasmodb",
+    "genebank"
+  ),
+  gene_chr = c(
+    "1",
+    "2",
+    "3",
+    "4",
+    "7",
+    "8",
+    "10",
+    "13",
+    "13",
+    "unknown"
+  ),
+  gene_allele = c(
+    "Sal_1",
+    "Sal_1",
+    "Sal_1",
+    "Sal_1",
+    "Sal_1",
+    "Sal_1",
+    "Sal_1",
+    "Sal_1",
+    "Sal_1",
+    "Brazil_I"
+  ),
+  gene_annotation = c(
+    "PvRAMA",
+    "Pv-fam-a",
+    "Pvs16",
+    "PvMSP5",
+    "PvMSP1-19",
+    "PvRBP2b",
+    "PvMSP8",
+    "PvPTEX150",
+    "PvCSS",
+    "PvEBPII"
+  ),
+  full_name = c(
+    "Rhoptry associated membrane antigen",
+    "Tryptophan-rich Antigen",
+    "Sexual stage antigen 16",
+    "Merozoite Protein 5",
+    "Merozoite protein 1, C-terminal 19kD fragment",
+    "Reticulocyte binding protein 2b",
+    "Merozoite Protein 8",
+    "Translocon of Exported Proteins",
+    "Cysteine-rich small secreted protein",
+    "Erythrocyte binding-like protein II"
+  ),
+  construct_size = c(
+    "634-709",
+    "56-480",
+    "30-92",
+    "25-364",
+    "1623-1715",
+    "169-470",
+    "24-465",
+    "23-908",
+    "22-381",
+    "1-716"
+  ),
+  expression_system = c(
+    "E. coli",
+    "E. coli",
+    "Peptide",
+    "E. coli",
+    "E. coli",
+    "E. coli",
+    "Insect cells",
+    "Insect cells",
+    "Mammamlian",
+    "Insect cells"
+  ),
+  provider = c(
+    "ZiP Diagnostics",
+    "ZiP Diagnostics",
+    "Genscript",
+    "ZiP Diagnostics",
+    "ZiP Diagnostics",
+    "Tham Laboratory, WEHI",
+    "WEHI Protein Production Facility",
+    "WEHI Protein Production Facility",
+    "WEHI Protein Production Facility",
+    "WEHI Protein Production Facility"
+  ),
+  gene_function = c(
+    # 1. PvRAMA
+    "Blood-stage; Part of the Glycophosphatidylinositol (GPI)-anchored proteins on the merozoite.",
+    # 2. Pv-fam-a
+    "Blood-stage; Unspecified.",
+    # 3. Pvs16
+    "Sexual-stage; Immature gametocyte marker.",
+    # 4. PvMSP5
+    "Blood-stage; Part of the GPI anchored proteins on the merozoite.",
+    # 5. PvMSP1-19
+    "Blood-stage; Carried to newly invaded red blood cells following merozoite egress, remains on merozoite surface.",
+    # 6. PvRBP2b
+    "Blood-stage; Binds transferrin receptor 1 to mediate recognition of reticulocytes. Essential for invasion.",
+    # 7. PvMSP8
+    "Blood-stage; Part of the GPI anchored proteins on the merozoite.",
+    # 8. PvPTEX150
+    "Blood-stage; Unspecified in P. vivax but ortholog in P. falciparum is on parasitophorous vacuole membrane responsible for protein export to erythrocyte cytosol.",
+    # 9. PvCSS
+    "Blood-stage; Ortholog in P. knowlesi and P. falciparum is essential for merozoite invasion. In P. falciparum, it is part of the essential PCRCR complex. It forms part of the P. vivax PTRAMP-CSS-Ripr complex",
+    # 10. PvEBPII
+    "Blood stage; Erythrocyte invasion."
+  ),
+  reference = c(
+    # 1. PvRAMA
+    "Wang, B., Lu, F., Cheng, Y., Li, J., Ito, D., Sattabongkot, J., Tsuboi, T., and Han, E.-T. (2013). Identification and characterization of the Plasmodium falciparum RhopH2 ortholog in Plasmodium vivax. Parasitol. Res. 112, 585–593. https://doi.org/10.1007/s00436-012-3170-9.",
+    # 2. Pv-fam-a
+    "Carlton, J.M., Adams, J.H., Silva, J.C., Bidwell, S.L., Lorenzi, H., Caler, E., Crabtree, J., Angiuoli, S. V, Merino, E.F., Amedeo, P., et al. (2008). Comparative genomics of the neglected human malaria parasite Plasmodium vivax. Nature 455, 757–763. https://doi.org/10.1038/nature07327.",
+    # 3. Pvs16
+    "Roobsoong, W., Roytrakul, S., Sattabongkot, J., Li, J., Udomsangpetch, R., and Cui, L. (2011). Determination of the Plasmodium vivax schizont stage proteome. J. Proteomics 74, 1701–1710. https://doi.org/10.1016/j.jprot.2011.03.035.",
+    # 4. PvMSP5
+    "Woodberry, T., Minigo, G., Piera, K.A., Hanley, J.C., Silva, H.D. de, Salwati, E., Kenangalem, E., Tjitra, E., Coppel, R.L., Price, R.N., et al. (2008). Antibodies to Plasmodium falciparum and Plasmodium vivax Merozoite Surface Protein 5 in Indonesia: Species-Specific and Cross-Reactive Responses. J. Infect. Dis. 198, 134–142. https://doi.org/10.1086/588711.",
+    # 5. PvMSP1-19
+    "HOLDER, A.A. (2009). The carboxy-terminus of merozoite surface protein 1: structure, specific antibodies and immunity to malaria. Parasitology 136, 1445–1456. https://doi.org/10.1017/s0031182009990515.",
+    # 6. PvRBP2b
+    "Gruszczyk, J., Kanjee, U., Chan, L.-J., Menant, S., Malleret, B., Lim, N.T.Y., Schmidt, C.Q., Mok, Y.-F., Lin, K.-M., Pearson, R.D., et al. (2018). Transferrin receptor 1 is a reticulocyte-specific receptor for Plasmodium vivax. Science (1979). 359, 48–55. https://doi.org/10.1126/science.aan1078; Cheng, Y., Wang, B., Changrob, S., Han, J.-H., Sattabongkot, J., Ha, K.-S., Chootong, P., Lu, F., Cao, J., Nyunt, M.H., et al. (2017). Naturally acquired humoral and cellular immune responses to Plasmodium vivax merozoite surface protein 8 in patients with P. vivax infection. Malar. J. 16, 211. https://doi.org/10.1186/s12936-017-1837-5.",
+    # 7. PvMSP8
+    "Koning-Ward, T.F. de, Gilson, P.R., Boddey, J.A., Rug, M., Smith, B.J., Papenfuss, A.T., Sanders, P.R., Lundie, R.J., Maier, A.G., Cowman, A.F., et al. (2009). A newly discovered protein export machine in malaria parasites. Nature 459, 945–949. https://doi.org/10.1038/nature08104.",
+    # 8. PvPTEX150
+    "Seager, B.A., Lim, P.S., Xiao, X., Lai, K.H., Feufack-Donfack, L.B., Dass, S., Jung, N.C., Abraham, A., Grigg, M.J., Anstey, N.M., et al. (2026). PTRAMP, CSS and Ripr form a conserved complex required for merozoite invasion of Plasmodium species into erythrocytes. Nat. Commun. 17, 1780. https://doi.org/10.1038/s41467-026-68486-1.",
+    # 9. PvCSS
+    "Hester, J., Chan, E.R., Menard, D., Mercereau-Puijalon, O., Barnwell, J., Zimmerman, P.A., and Serre, D. (2013). De Novo Assembly of a Field Isolate Genome Reveals Novel Plasmodium vivax Erythrocyte Invasion Genes. PLoS Negl. Trop. Dis. 7, e2569. https://doi.org/10.1371/journal.pntd.0002569.",
+    # 10. PvEBPII
+    "Longley, R.J., Grigg, M.J., Schoffer, K., Obadia, T., Hyslop, S., Piera, K.A., Nekkab, N., Mazhari, R., Takashima, E., Tsuboi, T., et al. (2022). Plasmodium vivax malaria serological exposure markers: Assessing the degree and implications of cross-reactivity with P. knowlesi. Cell Rep. Med. 3, 100662. https://doi.org/10.1016/j.xcrm.2022.100662."
+  )
+)
+text_info %>% kable()
+```
+
+# SeroTrackR 
+
+```{r}
+library(SeroTrackR)
+library(tidyverse)
+
+your_raw_data <- c(
+  system.file("extdata", "example_MAGPIX_plate1.csv", package = "SeroTrackR"),
+  system.file("extdata", "example_MAGPIX_plate2.csv", package = "SeroTrackR"),
+  system.file("extdata", "example_MAGPIX_plate3.csv", package = "SeroTrackR")
+)
+your_plate_layout <- system.file(
+  "extdata",
+  "example_platelayout_1.xlsx",
+  package = "SeroTrackR"
+)
+
+sero_data <- readSeroData(
+  raw_data = your_raw_data,
+  platform = "magpix", # default
+  version = "4.2" # default
+)
+
+plate_list <- readPlateLayout(
+  plate_layout = your_plate_layout,
+  sero_data = sero_data
+)
+
+qc_results <- runQC(
+  sero_data = sero_data, # load in your serological data variable
+  plate_list = plate_list # load your plate list variable
+)
+
+mfi_to_rau_output <- MFItoRAU(
+  sero_data = sero_data,
+  plate_list = plate_list,
+  qc_results = qc_results,
+  std_point = 10
+)
+
+plotModel(mfi_to_rau_output, sero_data)$`1`
+ggsave(
+  here("results/manuscript_v1/SeroTrackR_plotmodel.png"),
+  height = 20,
+  width = 25,
+  units = "cm"
+)
+```
