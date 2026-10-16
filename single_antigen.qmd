@@ -1,0 +1,81 @@
+---
+title: "Single-antigen model"
+format: html
+author: "Lauren Smith, Dionne Argyropoulos"
+---
+
+This document contains the step-by-step run through of creating the single-antigen models. 
+
+# Load Packages and Data 
+
+We will load in pre-defined packages from `packages.R` and read in our data frame `d_samples_global_training.csv` containing 2,635 samples from the longitudinal cohort studies and negative control donor sources. 
+
+```{r}
+# Source R packages 
+source(here::here("packages.R"))
+
+# Load primary dataset
+d <- read.csv(here::here("data/d_samples_global_training.csv")) %>% select(-SampleID)
+
+# Create list of PvSEMs
+top_10  <- c("EBP", "PTEX150", "PvCSS", "LF005", "LF010", "RBP2b.P87", "LF016", "MSP8", "LF001", "s16")
+
+# Stable parameters
+d_folds     <- vfold_cv(d, v = 10, repeats = 5, strata = status)
+cores       <- parallel::detectCores() - 1
+```
+
+# Create single-antigen model
+
+```{r}
+iter <- 1000
+
+# Subset to antigens of interest and factor the outcome
+d_sa <- d %>%
+  select(all_of(top_10), status) %>%
+  mutate(status = as.factor(status))
+
+# Step 1-3: sweep cutoffs per antigen, computing sensitivity/specificity
+single_antigen_roc_data <- data.frame()
+for (antigen_name in top_10) {
+  cutoffs <- seq(from = 0, to = max(d_sa[[antigen_name]], na.rm = TRUE), length = iter)
+
+  results <- sapply(cutoffs, function(cut) {
+    status_pred <- ifelse(d_sa[[antigen_name]] > cut, "new", "old")
+    true_news  <- sum(d_sa$status == "new" & status_pred == "new")
+    true_olds  <- sum(d_sa$status == "old" & status_pred == "old")
+    false_news <- sum(d_sa$status == "old" & status_pred == "new")
+    false_olds <- sum(d_sa$status == "new" & status_pred == "old")
+    c(sensitivity = true_news / (true_news + false_olds),
+      specificity = true_olds / (true_olds + false_news))
+  })
+
+  results_df <- data.frame(cutoff = cutoffs, sensitivity = results[1, ], specificity = results[2, ])
+  results_df$antigen_name <- antigen_name
+  single_antigen_roc_data <- rbind(single_antigen_roc_data, results_df)
+}
+
+# ROC curves for all antigens on one plot
+single_antigen_ROC <- single_antigen_roc_data %>%
+  mutate(
+    antigen_name = factor(antigen_name,
+                          levels = c("LF001", "LF005", "LF010", "LF016", "RBP2b.P87", "MSP8", "PTEX150", "PvCSS", "EBP", "s16"),
+                          labels = c("PvRAMA", "Pv-fam-a", "PvMSP5", "PvMSP1-19", "PvRBP2b", "PvMSP8", "PvPTEX150", "PvCSS", "PvEBPII", "Pvs16"),
+                          ordered = TRUE)
+  ) %>%
+  ggplot(aes(x = 1 - specificity, y = sensitivity, color = antigen_name)) +
+  geom_line() +
+  geom_abline(linetype = "dashed") +
+  labs(x = "1 - Specificity", y = "Sensitivity", colour = "Antigen") +
+  scale_y_continuous(breaks = seq(0, 1, 0.2)) +
+  scale_x_continuous(breaks = seq(0, 1, 0.2)) +
+  scale_colour_manual(values = pals::melb_trams(10, c("the5", "the1", "the70", "the109", "the30", "the19", "the12", "the58", "the48", "the35"))) +
+  theme_bw()
+
+# AUC per antigen
+single_antigen_AUC <- single_antigen_roc_data %>%
+  mutate(FPR = 1 - specificity) %>%
+  group_by(antigen_name) %>%
+  arrange(FPR) %>%
+  summarise(AUC = sum(diff(FPR) * (head(sensitivity, -1) + tail(sensitivity, -1)) / 2))
+```

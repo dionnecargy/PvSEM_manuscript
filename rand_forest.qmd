@@ -15,8 +15,7 @@ We will load in pre-defined packages from `packages.R` and read in our data fram
 source(here::here("packages.R"))
 
 # Load primary dataset
-d <- read.csv(here::here("data/d_samples_global_training.csv")) %>%
-  dplyr::select(-SampleID)
+d <- read.csv(here::here("data/d_samples_global_training.csv")) %>% dplyr::select(-SampleID)
 ```
 
 # Step 1: Combination Selection 
@@ -179,15 +178,15 @@ rf_bo <- tune_workflow %>%
 show_best(rf_bo)
 
 # Write model and top models
-saveRDS(rf_bo, file = here::here("results/hyperparameter_tuning.rds"))
+saveRDS(rf_bo, file = here::here("model/hyperparameter_tuning.rds"))
 best_hyperparameters <- as.data.frame(show_best(rf_bo))
-fwrite(best_hyperparameters, file = here::here("results/hyperparameter_tuning.csv"))
+# fwrite(best_hyperparameters, file = here::here("results/hyperparameter_tuning.csv"))
 ```
 
 ## Visualise: min_n, mtry
 
 ```{r visualise min_n and mtry}
-rf_bo <- readRDS(here::here("results/hyperparameter_tuning.rds"))
+rf_bo <- readRDS(here::here("model/hyperparameter_tuning.rds"))
 
 rf_bo %>% autoplot(type = "performance")
 rf_bo %>% autoplot(type = "parameters")
@@ -226,7 +225,7 @@ rf_bo %>% autoplot(type = "parameters")
   ) 
 # Plot for Supplement 
 ggarrange(mtry_plot, min_n_plot, ncol = 2)
-ggsave(here::here("results/FigS2.png"), width = 40, height = 15, units = "cm", dpi = 300)
+# ggsave(here::here("results/FigS2.png"), width = 40, height = 15, units = "cm", dpi = 300)
 ```
 
 # Step 3A: Training the Final Model
@@ -275,11 +274,11 @@ final_fit <- fit(antibody_wkfl, data = d)
 final_fit %>%
   extract_fit_parsnip() %>%
   vip()
-ggsave(here::here("results/importance_antigens.png"), width = 7, height = 5, units = "in", dpi = 300)
+# ggsave(here::here("results/importance_antigens.png"), width = 7, height = 5, units = "in", dpi = 300)
 
 # Step 6: Save the final model
 antibody_model <- final_fit
-saveRDS(antibody_model, here::here("results/PvSeroTaTmodel.rds"))
+saveRDS(antibody_model, here::here("model/PvSeroTaTmodel.rds"))
 ```
 
 # Step 3B: Find the Maximised Thresholds 
@@ -359,7 +358,7 @@ RF_ROC <- antibody_wkfl_preds_summarised %>%
 
 saveRDS(
   antibody_wkfl_fit_resamples,
-  here::here("results/antibody_wkfl_fit_resamples.rds")
+  here::here("model/antibody_wkfl_fit_resamples.rds")
 )
 ```
 
@@ -386,7 +385,7 @@ threshold_table <- data.frame(
   threshold = c(threshold_max_sens_spec, threshold_85_sens, threshold_90_sens, threshold_95_sens,
                 threshold_85_spec, threshold_90_spec, threshold_95_spec)
 )
-write.csv(threshold_table, here::here("results/rand_forest_threshold_values.csv"), row.names = F)
+# write.csv(threshold_table, here::here("results/rand_forest_threshold_values.csv"), row.names = F)
 ```
 
 ## Antibody Metrics 
@@ -418,7 +417,7 @@ write.csv(sens_spec_performance_metrics, here::here("results/rand_forest/rand_fo
 # You can also look at the corresponding confusion matrix
 max_sens_spec_confusion_matrix <- results %>% conf_mat(truth = status, estimate = .pred_class_threshold_max_sens_spec) 
 max_sens_spec_confusion_matrix_export <- max_sens_spec_confusion_matrix$table %>% as.data.frame()
-write.csv(max_sens_spec_confusion_matrix_export, here::here("results/rand_forest/rand_forest_max_sens_spec_confusion_matrix.csv"), row.names = F)
+# write.csv(max_sens_spec_confusion_matrix_export, here::here("results/rand_forest_max_sens_spec_confusion_matrix.csv"), row.names = F)
 
 # You can also plot the relationship between sensitivity/specificity and the random forest votes threshold
 # The ROC curve gives you this information, but I also find it useful to look at this way
@@ -460,7 +459,7 @@ RF_ROC_long %>%
   scale_x_continuous(breaks=seq(0,1,0.2)) + 
   scale_colour_manual(values = c(sensitivity = "#C50F1F", specificity = "#1a73e8")) 
   theme_bw()
-ggsave(here::here("results/rf_votes_sens_spec.png"), width = 5, height = 5, units = "in", dpi = 300)
+# ggsave(here::here("results/rand_forest_votes_sens_spec.png"), width = 5, height = 5, units = "in", dpi = 300)
 ```
 
 # Step 4: Final Trained model: Apply to classify NEW data
@@ -477,13 +476,13 @@ ggsave(here::here("results/rf_votes_sens_spec.png"), width = 5, height = 5, unit
 d <- read.csv(here::here("data/d_samples_global_training.csv")) 
 
 # Reads in serostatus using the trained random forest
-antibody_model <- readRDS(here::here("model/rand_forest/PvSeroTaTmodel.rds"))
+antibody_model <- readRDS(here::here("model/PvSeroTaTmodel.rds"))
 
 # function to 
 classify_final_results <- function(data, algorithm_type, Sens_Spec, file_name) {
   # Read in the random forest votes threshold values
   threshold_table <- if(algorithm_type == "antibody_model"){
-    read.csv(here::here("model/rand_forest/threshold_values.csv"))
+    read.csv(here::here("model/threshold_values.csv"))
   } else {
     stop("Invalid model provided")
   }

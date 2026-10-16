@@ -1,0 +1,6 @@
+".metric",".estimator",".estimate","group"
+"sens","binary",0.805309734513274,"pm_reduced"
+"spec","binary",0.805771873568484,"pm_reduced"
+"ppv","binary",0.461928934010152,"pm_reduced"
+"npv","binary",0.952355170546833,"pm_reduced"
+"roc_auc","binary",0.870444991263943,"pm_reduced"

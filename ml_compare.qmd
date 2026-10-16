@@ -1,5 +1,548 @@
 ---
-title: "Untitled"
+title: "Machine Learning Comparison and Stacks Ensemble"
 format: html
+author: "Dionne Argyropoulos, Lauren Smith"
 ---
 
+This document contains the step-by-step run through of creating a `workflowsets` machine learning comparison and a `stacks` ensemble. 
+
+# Load Packages and Data 
+
+We will load in pre-defined packages from `packages.R` and read in our data frame `d_samples_global_training.csv` containing 2,635 samples from the longitudinal cohort studies and negative control donor sources. 
+
+```{r}
+# Source R packages 
+source(here::here("packages.R"))
+
+# Load primary dataset
+d <- read.csv(here::here("data/d_samples_global_training.csv")) %>% dplyr::select(-SampleID)
+
+# Create list of PvSEMs
+top_8   <- c("EBP", "PTEX150", "PvCSS", "LF005", "LF010", "RBP2b.P87", "LF016", "MSP8")
+
+# Stable parameters
+d_folds     <- vfold_cv(d, v = 10, repeats = 5, strata = status)
+cores       <- parallel::detectCores() - 1
+
+# Models to use 
+models <- c(
+  logistic_reg        = "logistic_reg",
+  boost_tree          = "boost_tree",
+  nearest_neighbor    = "nearest_neighbor",
+  discrim_linear      = "discrim_linear",
+  discrim_quad        = "discrim_quad",
+  svm_linear          = "svm_linear",
+  naive_bayes         = "naive_bayes",
+  rand_forest         = "rand_forest"
+)
+```
+
+# Compare multiple machine learning models 
+
+## Step 1: Model specifications (pre-tuning)
+
+```{r}
+model_specs <- list(
+  logistic_reg = logistic_reg() %>% set_engine("glm") %>% set_mode("classification"),
+  boost_tree =
+    boost_tree(
+      tree_depth = tune(),
+      learn_rate = tune(),
+      loss_reduction = tune(),
+      mtry = tune(),
+      min_n = tune(),
+      sample_size = tune(),
+      trees = 10000
+    ) %>%
+    set_mode("classification") %>%
+    set_engine("xgboost"),
+  nearest_neighbor =
+    nearest_neighbor(
+      neighbors = tune(),
+      dist_power = tune(),
+      weight_func = tune()
+    ) %>%
+    set_mode("classification") %>%
+    set_engine("kknn"),
+  discrim_linear = discrim_linear() %>% set_mode("classification") %>% set_engine("MASS"),
+  discrim_quad = discrim_quad() %>% set_mode("classification") %>% set_engine("MASS"),
+  svm_linear =
+    svm_linear(cost = tune(), margin = tune()) %>%
+    set_mode("classification") %>%
+    set_engine("kernlab"),
+  naive_bayes =
+    naive_Bayes(smoothness = tune(), Laplace = tune()) %>%
+    set_mode("classification") %>%
+    set_engine("naivebayes"),
+  rand_forest =
+    rand_forest(
+      trees = 10000,
+      mtry = tune(),
+      min_n = tune()
+    ) %>%
+    set_mode("classification") %>%
+    set_engine(
+      "ranger",
+      importance = "permutation",
+      num.threads = cores,
+      probability = TRUE,
+      seed = 1234
+    )
+)
+```
+
+## Step 2: Workflow set
+
+```{r}
+log_recipe <- recipe(status ~., data = d) %>%
+  step_log(all_predictors())
+
+antibody_wkfl <- workflow_set(preproc = list(log = log_recipe), models = model_specs)
+```
+
+## Step 3A: Hyperparameter tuning 
+
+```{r}
+set.seed(1234)
+grid_ctrl <- control_grid(
+  save_pred = TRUE,
+  parallel_over = "everything",
+  save_workflow = TRUE
+)
+
+tuned_results <- antibody_wkfl %>%
+  workflow_map(
+    seed = 1234,
+    resamples = d_folds,
+    grid = 25,
+    control = grid_ctrl
+  )
+
+saveRDS(tuned_results, here::here("model/all_tuned_model.rds"))
+```
+
+## Step 3B: Identify tuned hyperparameters & visualise best AUC per model
+
+```{r}
+# Best models
+top_models <- tuned_results %>% 
+  workflowsets::rank_results(select_best = TRUE) %>% 
+  dplyr::filter(.metric == "roc_auc") %>% 
+  dplyr::select(model, .config, roc_auc = mean, rank)
+write.csv(top_models, here::here("model", "All_Models_Wkfl_Top_Rank_ROC_AUC.csv"), row.names = FALSE)
+
+# All models
+all_models <- workflowsets::rank_results(tuned_results, rank_metric = "roc_auc")
+write.csv(all_models, here::here("model", "All_Models_Wkfl_Rank_ROC_AUC.csv"), row.names = FALSE)
+
+# Plot: rank vs AUC per model
+auc_order <- tuned_results %>%
+  workflowsets::rank_results(select_best = TRUE) %>%
+  dplyr::filter(.metric == "roc_auc") %>%
+  dplyr::arrange(desc(mean)) %>%
+  dplyr::pull(model)
+
+ranked_auc_plot <- tuned_results %>% 
+  workflowsets::autoplot(metric = "roc_auc", select_best = TRUE) +
+  ggplot2::scale_colour_manual(
+    breaks = auc_order,   # order legend by descending ROC AUC
+    values = melb_trams(8, name = c("the1", "the70", "the109", "the30", "the19", "the12", "the58", "the48")),
+    labels = c(
+      "rand_forest" = "Random Forest",
+      "boost_tree" = "XGBoost",
+      "discrim_quad" = "QDA",
+      "nearest_neighbor" = "k-Nearest Neighbours",
+      "svm_linear" = "Support Vector Machine",
+      "logistic_reg" = "Logistic Regression",
+      "discrim_linear" = "LDA",
+      "naive_Bayes" = "Naive Bayes"
+    )
+  ) +
+  ggplot2::scale_shape_manual(values = 19, guide = "none") + 
+  ggplot2::scale_x_continuous(
+    name = "Model Rank",
+    breaks = 1:8,
+    limits = c(0.9, 8.1)
+  ) +
+  ggplot2::scale_y_continuous(
+    name = "AUC",
+    limits = c(0.82, 0.88),
+    breaks = seq(0.82, 0.88, by = 0.02)
+  ) +
+  ggplot2::theme_bw() +
+  ggplot2::labs(color = "Model", y = "AUC")
+# ggsave(here::here("model", "All_Models_Wkfl_Rank_ROC_AUC.png"), plot = ranked_auc_plot, width = 20, height = 15, units = "cm", dpi = 300)
+
+ranked_auc_plot
+
+# Top hyperparameters per model
+top_hyperparams <- tuned_results %>%
+  dplyr::mutate(best = purrr::map(result, tune::select_best, metric = "roc_auc")) %>%
+  dplyr::select(wflow_id, best) %>% 
+  tidyr::unnest(cols = c(best)) %>%
+  dplyr::filter(!if_all(-c(wflow_id, .config), is.na)) %>%
+  dplyr::mutate(across(!c(wflow_id, .config), as.character)) %>% 
+  tidyr::pivot_longer(-c(wflow_id, .config), names_to = "Hyperparameter", values_to = "Values") %>% 
+  tidyr::drop_na()
+# write.csv(top_hyperparams, here::here("model", "All_Models_Wkfl_Top_Hyperparameters.csv"), row.names = FALSE)
+```
+
+## Step 4: Tuned model specifications & workflows
+
+```{r}
+# Extract best hyperparameters per model
+hyperparams <- tuned_results %>%
+  dplyr::mutate(best = map(result, select_best, metric = "roc_auc")) %>%
+  dplyr::select(wflow_id, best) %>% 
+  tidyr::unnest(cols = c(best))
+
+# Logistic Regression: no tuning parameters
+logistic_reg_spec_tuned <- logistic_reg() %>%
+  set_engine("glm") %>%
+  set_mode("classification")
+
+# Gradient Boosted Tree
+boost_tree_spec_tuned <- boost_tree() %>%
+  set_args(
+    tree_depth = hyperparams %>% filter(wflow_id == "log_boost_tree") %>% pull(tree_depth), 
+    learn_rate = hyperparams %>% filter(wflow_id == "log_boost_tree") %>% pull(learn_rate), 
+    loss_reduction = hyperparams %>% filter(wflow_id == "log_boost_tree") %>% pull(loss_reduction), 
+    mtry = hyperparams %>% filter(wflow_id == "log_boost_tree") %>% pull(mtry), 
+    min_n = hyperparams %>% filter(wflow_id == "log_boost_tree") %>% pull(min_n), 
+    sample_size = hyperparams %>% filter(wflow_id == "log_boost_tree") %>% pull(sample_size), 
+    trees = 10000
+  ) %>% 
+  set_mode("classification") %>%
+  set_engine("xgboost")
+
+# k Nearest Neighbours
+nearest_neighbor_spec_tuned <- nearest_neighbor() %>% 
+  set_args(
+    neighbors = hyperparams %>% filter(wflow_id == "log_nearest_neighbor") %>% pull(neighbors), 
+    dist_power = hyperparams %>% filter(wflow_id == "log_nearest_neighbor") %>% pull(dist_power), 
+    weight_func = hyperparams %>% filter(wflow_id == "log_nearest_neighbor") %>% pull(weight_func)
+  ) %>% 
+  set_mode("classification") %>%
+  set_engine("kknn")
+
+# Linear Discriminant Analysis: no tuning parameters
+discrim_linear_spec_tuned <- discrim_linear() %>%
+  set_mode("classification") %>%
+  set_engine("MASS")
+
+# Quadratic Discriminant Analysis: no tuning parameters
+discrim_quad_spec_tuned <- discrim_quad() %>%
+  set_mode("classification") %>%
+  set_engine("MASS")
+
+# Support Vector Machine
+svm_linear_spec_tuned <- svm_linear() %>%
+  set_args(
+    cost = hyperparams %>% filter(wflow_id == "log_svm_linear") %>% pull(cost), 
+    margin = hyperparams %>% filter(wflow_id == "log_svm_linear") %>% pull(margin)
+  ) %>% 
+  set_mode("classification") %>%
+  set_engine("kernlab")
+
+# Naive Bayes
+naive_bayes_spec_tuned <- naive_Bayes(
+  smoothness = hyperparams %>% filter(wflow_id == "log_naive_bayes") %>% pull(smoothness), 
+  Laplace = hyperparams %>% filter(wflow_id == "log_naive_bayes") %>% pull(Laplace)
+) %>%
+  set_mode("classification") %>%
+  set_engine("naivebayes")
+
+# Random Forest: Keep fixed 10,000 trees
+rand_forest_spec_tuned <- rand_forest() %>%
+  set_args(
+    trees = 10000,
+    mtry = hyperparams %>% filter(wflow_id == "log_rand_forest") %>% pull(mtry),
+    min_n = hyperparams %>% filter(wflow_id == "log_rand_forest") %>% pull(min_n)
+  ) %>%
+  set_mode("classification") %>%
+  set_engine("ranger",
+             importance = "permutation",
+             num.threads = cores,
+             probability = TRUE,
+             seed = 1234) 
+
+# Build tuned workflow set (matching the order of `models`)
+model_specs_tuned <- list(
+  logistic_reg = logistic_reg_spec_tuned,
+  boost_tree = boost_tree_spec_tuned,
+  nearest_neighbor = nearest_neighbor_spec_tuned,
+  discrim_linear = discrim_linear_spec_tuned,
+  discrim_quad = discrim_quad_spec_tuned,
+  svm_linear = svm_linear_spec_tuned,
+  naive_bayes = naive_bayes_spec_tuned,
+  rand_forest = rand_forest_spec_tuned
+)
+
+antibody_wkfl_tuned <- workflow_set(preproc = list(log = log_recipe), models = model_specs_tuned)
+
+# Resample tuned models
+final_results <- antibody_wkfl_tuned %>%
+  workflow_map(
+    seed = 1234,
+    resamples = d_folds,
+    grid = 25,
+    control = grid_ctrl
+  )
+
+saveRDS(final_results, here::here("model/all_final_model.rds"))
+```
+
+## Step 4 (continued): Collect predictions from tuned models
+
+```{r}
+# Collect assessment set predictions: unsummarised (per repeat) and summarised
+all_preds_unsummarised <- final_results %>%
+  collect_predictions(summarize = FALSE)
+all_preds_summarised <- final_results %>%
+  collect_predictions(summarize = TRUE)
+
+# Plot ROC per model 
+roc_plot <- all_preds_unsummarised %>%
+  dplyr::group_by(model) %>%
+  dplyr::mutate(
+    model = factor(
+      model, 
+      levels = c("rand_forest", "boost_tree", "discrim_quad", "nearest_neighbor", "svm_linear", "logistic_reg", "discrim_linear", "naive_Bayes")
+    )
+  ) %>%
+  yardstick::roc_curve(truth = status, .pred_new) %>%
+  parsnip::autoplot() +
+  ggplot2::scale_colour_manual(
+    values = melb_trams(8, name = c("the1", "the70", "the109", "the30", "the19", "the12", "the58", "the48")),
+    labels = c(
+      "rand_forest" = "Random Forest",
+      "logistic_reg" = "Logistic Regression",
+      "svm_linear" = "Support Vector Machine",
+      "boost_tree" = "XGBoost",
+      "nearest_neighbor" = "k-Nearest Neighbours",
+      "discrim_linear" = "LDA",
+      "discrim_quad" = "QDA",
+      "naive_Bayes" = "Naive Bayes"
+    )
+  ) +
+  ggplot2::scale_y_continuous(breaks = seq(0, 1, 0.2)) +
+  ggplot2::scale_x_continuous(breaks = seq(0, 1, 0.2)) +
+  ggplot2::labs(x = "1 - Specificity", y = "Sensitivity", colour = "Model")
+roc_plot
+
+# AUC per model
+auc_results <- all_preds_summarised %>%
+  dplyr::group_by(wflow_id) %>%
+  yardstick::roc_auc(truth = status, .pred_new) %>%
+  dplyr::mutate(wflow_id = gsub("log_", "", wflow_id)) %>% 
+  dplyr::arrange(desc(.estimate))
+write.csv(auc_results, here::here("model", "Top_Models_AUC.csv"))
+
+auc_results
+```
+
+```{r}
+# Join predictions to longitudinal cohort data
+d_with_id <- d %>% dplyr::mutate(.row = row_number())
+
+all_preds_summarised <- all_preds_summarised %>%
+  dplyr::mutate(model = ifelse(model == "naive_Bayes", "naive_bayes", model))
+
+preds_list <- all_preds_summarised %>%
+  dplyr::group_by(model) %>%
+  group_split(.keep = TRUE) %>%
+  set_names(map_chr(., ~ unique(.x$model))) %>%
+  map(~ .x %>%
+        select(-status, -.config) %>% 
+        left_join(d_with_id, by = ".row") %>%
+        select(-.row)
+  )
+
+# Identify and save model-specific predictions and thresholds
+for (model_type in unique(all_preds_summarised$model)){
+  
+  # Model-specific summarised predictions 
+  wflow_specific_preds <- all_preds_summarised %>% 
+    filter(model == model_type) %>% 
+    roc_curve(status, .pred_new)
+  
+  # Find the maximised sensitivity/specificity
+  threshold_max_sens_spec <- wflow_specific_preds$.threshold[which.min(abs(wflow_specific_preds$specificity - wflow_specific_preds$sensitivity))]
+  # Find where the threshold is above a certain level of sensitivity
+  wflow_ROC_sorted_sens <- wflow_specific_preds %>% arrange(desc(.threshold))
+  threshold_85_sens <- wflow_ROC_sorted_sens$.threshold[which(wflow_ROC_sorted_sens$sensitivity >= 0.85)[1]]
+  threshold_90_sens <- wflow_ROC_sorted_sens$.threshold[which(wflow_ROC_sorted_sens$sensitivity >= 0.9)[1]]
+  threshold_95_sens <- wflow_ROC_sorted_sens$.threshold[which(wflow_ROC_sorted_sens$sensitivity >= 0.95)[1]]
+  # Find where the threshold is above a certain level of specificity
+  threshold_85_spec <- wflow_specific_preds$.threshold[which(wflow_specific_preds$specificity >= 0.85)[1]]
+  threshold_90_spec <- wflow_specific_preds$.threshold[which(wflow_specific_preds$specificity >= 0.9)[1]]
+  threshold_95_spec <- wflow_specific_preds$.threshold[which(wflow_specific_preds$specificity >= 0.95)[1]]
+  # Save final threshold table (used as input for classifying on new data)
+  threshold_table <- data.frame(
+    sens_spec = c("max_sens_spec", "85_sens", "90_sens", "95_sens", "85_spec", "90_spec", "95_spec"),
+    threshold = c(threshold_max_sens_spec, threshold_85_sens, threshold_90_sens, threshold_95_sens,
+                  threshold_85_spec, threshold_90_spec, threshold_95_spec)
+  )
+  model_type_short <- gsub("log_", "", model_type)
+  write.csv(threshold_table, here::here("model", model_type_short, paste0(model_type_short, "_threshold_values.csv")), row.names = FALSE)
+  
+  # Add classifications given these thresholds
+  model_results <- preds_list[[model_type]] %>% 
+    mutate(
+      .pred_class_threshold_max_sens_spec = as.factor(ifelse(.pred_new > threshold_max_sens_spec, "new", "old")), 
+      .pred_class_threshold_85_sens = as.factor(ifelse(.pred_new > threshold_85_sens, "new", "old")), 
+      .pred_class_threshold_90_sens = as.factor(ifelse(.pred_new > threshold_90_sens, "new", "old")), 
+      .pred_class_threshold_95_sens = as.factor(ifelse(.pred_new > threshold_95_sens, "new", "old")), 
+      .pred_class_threshold_85_spec = as.factor(ifelse(.pred_new > threshold_85_spec, "new", "old")), 
+      .pred_class_threshold_90_spec = as.factor(ifelse(.pred_new > threshold_90_spec, "new", "old")), 
+      .pred_class_threshold_95_spec = as.factor(ifelse(.pred_new > threshold_95_spec, "new", "old"))
+    )
+  
+  # Evaluate metrics at each threshold
+  antibody_metrics <- metric_set(roc_auc, sens, yardstick::spec, ppv, npv)
+  sens_spec_performance_metrics <- bind_rows(
+    model_results %>% antibody_metrics(truth = status, estimate = .pred_class_threshold_max_sens_spec, .pred_new) %>% mutate(group = "max_sens_spec"), 
+    model_results %>% antibody_metrics(truth = status, estimate = .pred_class_threshold_85_sens, .pred_new) %>% mutate(group = "85_sens"), 
+    model_results %>% antibody_metrics(truth = status, estimate = .pred_class_threshold_90_sens, .pred_new) %>% mutate(group = "90_sens"), 
+    model_results %>% antibody_metrics(truth = status, estimate = .pred_class_threshold_95_sens, .pred_new) %>% mutate(group = "95_sens"),
+    model_results %>% antibody_metrics(truth = status, estimate = .pred_class_threshold_85_spec, .pred_new) %>% mutate(group = "85_spec"), 
+    model_results %>% antibody_metrics(truth = status, estimate = .pred_class_threshold_90_spec, .pred_new) %>% mutate(group = "90_spec"), 
+    model_results %>% antibody_metrics(truth = status, estimate = .pred_class_threshold_95_spec, .pred_new) %>% mutate(group = "95_spec")
+  )
+  write.csv(sens_spec_performance_metrics, here::here("model", model_type_short, paste0(model_type_short, "_sens_spec_performance_metrics.csv")), row.names = FALSE)
+  
+  # Confusion matrix at max sens/spec threshold
+  max_sens_spec_confusion_matrix <- model_results %>% conf_mat(truth = status, estimate = .pred_class_threshold_max_sens_spec) 
+  write.csv(as.data.frame(max_sens_spec_confusion_matrix$table), here::here("model", model_type_short, paste0(model_type_short, "_max_sens_spec_confusion_matrix.csv")), row.names = FALSE)
+}
+```
+
+## Step 5: Fit and save final models
+
+```{r}
+wflow_ids <- antibody_wkfl_tuned$wflow_id
+fitted_models <- map(wflow_ids, ~ {
+  mod <- antibody_wkfl_tuned %>% extract_workflow(.x) %>% fit(d)
+  dir <- here::here("model", sub("log_", "", .x))
+  dir.create(dir, showWarnings = FALSE, recursive = TRUE)
+  saveRDS(mod, file.path(dir, paste0(sub("log_", "", .x), "_final_model.rds")))
+  mod
+})
+names(fitted_models) <- wflow_ids
+```
+
+# Stacks
+
+## Step 1: Initialise, blend and fit stack
+
+```{r}
+# Initialise the stack, add candidate members, learn stacking
+# coefficients (weights), then fit members with non-zero weights
+fit_stack <- 
+  stacks() %>% 
+  add_candidates(final_results) %>% 
+  blend_predictions() %>% 
+  fit_members()
+
+saveRDS(fit_stack, here::here("model", "stack", "stacked_model.rds"))
+```
+
+## Step 2: Evaluate stack and compare to individual ML models
+
+```{r}
+# Plot: Accuracy, Brier Class, Num_Members, ROC/AUC
+options(scipen = 999)
+stack_stats_plot <- fit_stack %>%
+  stacks::autoplot() +
+  ggplot2::theme_bw() +
+  ggplot2::labs(x = "Penalty", y = "Mean") +
+  ggplot2::facet_wrap(
+    ~ .metric,
+    ncol = 1,
+    scales = "free_y",
+    labeller = as_labeller(
+      c("accuracy" = "Accuracy", "brier_class" = "Brier Class", "num_members" = "Number of Contributing Models", "roc_auc" = "AUC")
+    )
+  )
+ggsave(here::here("model", "stack/stack_stats.png"), plot = stack_stats_plot, width = 20, height = 20, units = "cm", dpi = 300)
+
+stack_stats_plot
+```
+
+```{r}
+# Plot: Weights
+stack_weights_plot <- fit_stack %>%
+  stacks::autoplot(type = "weights") +
+  ggplot2::scale_fill_manual(
+    breaks = c("rand_forest", "boost_tree", "nearest_neighbor", "discrim_quad"),
+    values = melbourne::melb_trams(4, name = c("the1", "the70", "the30", "the109")),
+    labels = c(
+      "rand_forest" = "Random Forest",
+      "boost_tree" = "XGBoost",
+      "nearest_neighbor" = "k-Nearest Neighbours",
+      "discrim_quad" = "QDA"
+    )
+  ) +
+  ggplot2::theme_bw() +
+  ggplot2::labs(fill = "Model")
+ggsave(here::here("model", "stack/stack_weights.png"), plot = stack_weights_plot, width = 20, height = 15, units = "cm", dpi = 300)
+
+stack_weights_plot
+```
+
+```{r}
+# Plot: Compare fit stack AUC to tuned single-model AUC
+stack_data <- fit_stack$metrics %>%
+  dplyr::filter(penalty == 0.000010) %>%
+  dplyr::mutate(model = "stack") %>%
+  dplyr::filter(.metric == "roc_auc") %>%
+  dplyr::select(model, .config, roc_auc = mean, std_err)
+
+stack_compare_results <- final_results %>%
+  workflowsets::rank_results(select_best = TRUE) %>%
+  dplyr::filter(.metric == "roc_auc") %>%
+  dplyr::select(model, .config, roc_auc = mean, std_err, rank) %>%
+  dplyr::bind_rows(stack_data) %>%
+  dplyr::mutate(rank = dense_rank(desc(roc_auc)))
+
+new_auc_order <- stack_compare_results %>% dplyr::arrange(desc(roc_auc)) %>% dplyr::pull(model)
+
+stack_AUC <- stack_compare_results %>%
+  ggplot2::ggplot(aes(rank, roc_auc, colour = model)) +
+  ggplot2::geom_point() +
+  ggplot2::geom_errorbar(
+    aes(
+      ymin = roc_auc - 1 * std_err,
+      ymax = roc_auc + 1 * std_err
+    ),
+    width = diff(range(stack_compare_results$rank)) / 75
+  ) +
+  ggplot2::scale_colour_manual(
+    breaks = new_auc_order,
+    values = melb_trams(9, name = c("the1", "the70", "the57", "the109", "the30", "the19", "the12", "the58", "the48")),
+    labels = c(
+      "stack" = "Stack Ensemble",
+      "rand_forest" = "Random Forest",
+      "boost_tree" = "XGBoost",
+      "discrim_quad" = "QDA",
+      "nearest_neighbor" = "k-Nearest Neighbours",
+      "svm_linear" = "Support Vector Machine",
+      "logistic_reg" = "Logistic Regression",
+      "discrim_linear" = "LDA",
+      "naive_Bayes" = "Naive Bayes"
+    )
+  ) +
+  ggplot2::scale_x_continuous(
+    name = "Model Rank",
+    breaks = 1:9,
+    limits = c(0.9, 9.1)
+  ) +
+  ggplot2::scale_y_continuous(
+    name = "AUC",
+    limits = c(0.82, 0.88),
+    breaks = seq(0.82, 0.88, by = 0.02)
+  ) +
+  ggplot2::theme_bw() +
+  ggplot2::labs(color = "Model", y = "AUC")
+stack_AUC
+```
